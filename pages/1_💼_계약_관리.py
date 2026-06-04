@@ -379,12 +379,12 @@ for _, c in customer_contracts.iterrows():
         if contract_payments.empty:
             st.caption("등록된 결제 회차가 없습니다. ⚙️ 계약 메타에서 분납 회차를 입력하거나 ➕ 회차 추가로 등록하세요.")
         else:
-            # 표시용 view: 회차·발행일·금액·고객입금액·입금일
+            # 표시용 view: 회차·청구예정일·발행일·금액·고객입금액·입금일
             view = contract_payments.sort_values("회차")[[
-                "payment_id", "회차", "발행일", "금액", "고객입금액", "입금일",
+                "payment_id", "회차", "청구예정일", "발행일", "금액", "고객입금액", "입금일",
             ]].copy()
             view = view.reset_index(drop=True)
-            for col in ("발행일", "입금일"):
+            for col in ("청구예정일", "발행일", "입금일"):
                 view[col] = pd.to_datetime(view[col], errors="coerce")
             view["금액"] = view["금액"].astype(float).round().astype("Int64")
             view["고객입금액"] = view["고객입금액"].astype(float).round().astype("Int64")
@@ -395,6 +395,11 @@ for _, c in customer_contracts.iterrows():
                 column_config={
                     "payment_id": None,
                     "회차": st.column_config.TextColumn("회차", disabled=True, width="small"),
+                    "청구예정일": st.column_config.DateColumn(
+                        "청구 예정일",
+                        format="YYYY-MM-DD",
+                        help="세금계산서 발행 예정 날짜",
+                    ),
                     "발행일": st.column_config.DateColumn("세금계산서 발행일", format="YYYY-MM-DD"),
                     "금액": st.column_config.NumberColumn(
                         "매출액 (부가세포함)",
@@ -477,7 +482,7 @@ for _, c in customer_contracts.iterrows():
                     new = edited.loc[idx]
                     pid = orig["payment_id"]
                     diffs = {}
-                    for col in ("발행일", "입금일", "금액", "고객입금액"):
+                    for col in ("청구예정일", "발행일", "입금일", "금액", "고객입금액"):
                         a, b = orig[col], new[col]
                         if pd.isna(a) and pd.isna(b):
                             continue
