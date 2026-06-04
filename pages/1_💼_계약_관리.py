@@ -274,31 +274,47 @@ c4.markdown(
     unsafe_allow_html=True,
 )
 
-# ============== 고객 선택 ==============
-st.markdown("## 🔍 고객별 계약 조회")
-customers = sorted([c for c in contracts_df["고객기관"].unique() if c])
-selected_customer = st.selectbox(
-    "고객 선택",
-    options=["(전체)"] + customers,
-    index=0,
-)
+# ============== 계약 검색 ==============
+st.markdown("## 🔍 계약 검색")
+search_query = st.text_input(
+    "고객명 또는 계약명 키워드",
+    value="",
+    placeholder="예: 박**병원, 닥터디아이, ConnectCare ...",
+    help="고객기관·건명·서비스명에서 부분 일치 검색 (대소문자 무시)",
+).strip()
 
-if selected_customer != "(전체)":
-    customer_contracts = contracts_df[contracts_df["고객기관"] == selected_customer]
+if search_query:
+    q = search_query.lower()
+
+    def _matches(row):
+        for col in ("고객기관", "건명", "서비스명"):
+            val = row.get(col, "")
+            if val and q in str(val).lower():
+                return True
+        return False
+
+    customer_contracts = contracts_df[contracts_df.apply(_matches, axis=1)]
 else:
     customer_contracts = contracts_df
 
-# 고객별 요약 (선택 시)
-if selected_customer != "(전체)":
+# 검색 결과 요약 (검색어 입력 시)
+if search_query:
     cust_total = customer_contracts["총금액"].sum()
     cust_paid = ct.effective_paid_amount(
         payments_df[payments_df["contract_id"].isin(customer_contracts["contract_id"])]
     ) if not payments_df.empty else 0
     cust_unpaid = cust_total - cust_paid
     cc1, cc2, cc3 = st.columns(3)
-    cc1.metric(f"{selected_customer} 계약", f"{len(customer_contracts)}건")
+    cc1.metric(f"'{search_query}' 검색 결과", f"{len(customer_contracts)}건")
     cc2.metric("총 계약금", f"{cust_total:,.0f}원")
-    cc3.metric("미수금", f"{cust_unpaid:,.0f}원", delta=f"-{cust_unpaid/cust_total*100:.0f}%" if cust_total else "0%")
+    cc3.metric(
+        "미수금",
+        f"{cust_unpaid:,.0f}원",
+        delta=f"-{cust_unpaid/cust_total*100:.0f}%" if cust_total else "0%",
+    )
+
+if search_query and customer_contracts.empty:
+    st.warning(f"'{search_query}'과(와) 일치하는 계약이 없습니다.")
 
 st.markdown(f"### 📋 계약 목록 ({len(customer_contracts)}건)")
 
