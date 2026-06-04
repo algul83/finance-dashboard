@@ -245,10 +245,18 @@ for _, c in customer_contracts.iterrows():
     paid_amount = contract_payments[contract_payments["입금완료"]]["금액"].sum() if not contract_payments.empty else 0
     progress = (paid_amount / c["총금액"] * 100) if c["총금액"] > 0 else 0
 
+    # 입금률 배지 (색상 점 + 숫자)
+    if progress >= 100:
+        badge = f"🟢 {progress:.0f}%"
+    elif progress > 0:
+        badge = f"🟡 {progress:.0f}%"
+    else:
+        badge = f"🔴 {progress:.0f}%"
+
+    # 건명·고객·금액·배지만 (신규갱신·정산유형은 펼친 내부 정보 셀에 표시)
     header = (
-        f"📄 **{c['건명']}** · {c['고객기관']} · "
-        f"{c['총금액']:,.0f}원 · {c['신규갱신']} / {c['정산유형'] or '미입력'} · "
-        f"입금 {progress:.0f}%"
+        f"📄 **{c['건명']}**  ·  {c['고객기관'] or '—'}  ·  "
+        f"`{c['총금액']:,.0f}원`  ·  {badge}"
     )
     with st.expander(header, expanded=False):
         # 계약 정보
