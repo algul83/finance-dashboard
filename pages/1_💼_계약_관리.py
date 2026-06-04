@@ -312,11 +312,11 @@ for _, c in customer_contracts.iterrows():
                 column_config={
                     "payment_id": None,
                     "회차": st.column_config.TextColumn("회차", disabled=True, width="small"),
-                    "발행일": st.column_config.DateColumn("발행일", format="YYYY-MM-DD"),
+                    "발행일": st.column_config.DateColumn("세금계산서 발행일", format="YYYY-MM-DD"),
                     "금액": st.column_config.NumberColumn(
-                        "발행 금액",
+                        "매출액 (부가세포함)",
                         format="accounting",
-                        help="세금계산서 발행액",
+                        help="세금계산서 발행 금액",
                     ),
                     "고객입금액": st.column_config.NumberColumn(
                         "고객 입금액",
