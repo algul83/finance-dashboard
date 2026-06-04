@@ -138,6 +138,24 @@ st.markdown(
         border-color: {PRIMARY_DARK} !important;
         color: {PRIMARY_DARK} !important;
     }}
+    /* 결제 회차 data_editor — 헤더 연보라 + 가운데 정렬 */
+    div[data-testid="stDataFrameResizable"],
+    div[data-testid="stDataFrame"],
+    div[data-testid="stDataEditor"] {{
+        --gdg-bg-header: {PRIMARY_LIGHT} !important;
+        --gdg-bg-header-has-focus: #E1D5F7 !important;
+        --gdg-bg-header-hovered: #E5DAF9 !important;
+        --gdg-header-bottom-border-color: #D6C9F2 !important;
+        --gdg-text-header: {PRIMARY_DARK} !important;
+        --gdg-text-header-selected: {PRIMARY_DARK} !important;
+        --gdg-horizontal-border-color: #ECEAF3 !important;
+    }}
+    /* 셀 텍스트 가운데 정렬 시도 (오버레이 에디터 + HTML 노드 대상) */
+    div[data-testid="stDataEditor"] [data-testid="data-grid-canvas"] ~ div input,
+    div[data-testid="stDataEditor"] [class*="GlideDataEditor"] input,
+    div[data-testid="stDataEditor"] [class*="overlay"] {{
+        text-align: center !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
