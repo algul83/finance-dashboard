@@ -70,6 +70,17 @@ st.markdown(
         background: white; border: 1px solid #EDECF1;
         border-radius: 12px; padding: 16px; margin: 12px 0;
     }}
+    /* 계약 카드 펼침/접기 토글 버튼 (▼/▲) 높이 절반 */
+    div[data-testid="stVerticalBlockBorderWrapper"]
+        div[data-testid="stHorizontalBlock"]
+        > div[data-testid="stColumn"]:last-child
+        .stButton button {{
+        min-height: 26px !important;
+        height: 26px !important;
+        padding: 0 6px !important;
+        line-height: 1 !important;
+        margin-top: 6px !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
