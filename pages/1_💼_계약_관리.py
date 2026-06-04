@@ -272,17 +272,16 @@ for _, c in customer_contracts.iterrows():
                 st.rerun()
 
         # 결제 회차 — 인라인 편집 가능
-        st.markdown("**💳 결제 회차** (발행일·입금일·메모 직접 수정 → 아래 '변경사항 저장' 클릭)")
+        st.markdown("**💳 결제 회차** (발행일·입금일·금액 직접 수정 → 아래 '변경사항 저장' 클릭)")
         if contract_payments.empty:
             st.caption("등록된 결제 회차가 없습니다. ⚙️ 계약 메타에서 분납 회차를 입력하거나 ➕ 회차 추가로 등록하세요.")
         else:
-            # 인라인 편집용 view 구성
+            # 인라인 편집용 view 구성 (청구예정일·메모 제외)
             view = contract_payments.sort_values("회차")[[
-                "payment_id", "회차", "청구예정일", "발행일", "금액", "입금일", "메모",
+                "payment_id", "회차", "발행일", "금액", "입금일",
             ]].copy()
             view = view.reset_index(drop=True)
-            # 날짜 컬럼은 datetime/None 형태 유지 (DateColumn 호환)
-            for col in ("청구예정일", "발행일", "입금일"):
+            for col in ("발행일", "입금일"):
                 view[col] = pd.to_datetime(view[col], errors="coerce")
             view["금액"] = view["금액"].astype(float)
 
@@ -291,15 +290,16 @@ for _, c in customer_contracts.iterrows():
                 column_config={
                     "payment_id": None,  # 숨김
                     "회차": st.column_config.TextColumn("회차", disabled=True, width="small"),
-                    "청구예정일": st.column_config.DateColumn("청구예정일", format="YYYY-MM-DD"),
                     "발행일": st.column_config.DateColumn("발행일", format="YYYY-MM-DD"),
-                    "금액": st.column_config.NumberColumn("금액 (원)", format="%d"),
+                    "금액": st.column_config.NumberColumn(
+                        "금액",
+                        format="accounting",  # 1,234,567 콤마 + 음수 괄호
+                    ),
                     "입금일": st.column_config.DateColumn(
                         "입금일",
                         format="YYYY-MM-DD",
                         help="날짜를 입력하면 자동으로 입금완료(✅) 처리됩니다",
                     ),
-                    "메모": st.column_config.TextColumn("메모"),
                 },
                 hide_index=True,
                 use_container_width=True,
@@ -320,9 +320,8 @@ for _, c in customer_contracts.iterrows():
                     new = edited.loc[idx]
                     pid = orig["payment_id"]
                     diffs = {}
-                    for col in ("청구예정일", "발행일", "입금일", "메모", "금액"):
+                    for col in ("발행일", "입금일", "금액"):
                         a, b = orig[col], new[col]
-                        # NaN/None 비교
                         if pd.isna(a) and pd.isna(b):
                             continue
                         if pd.isna(a) != pd.isna(b) or a != b:
@@ -345,15 +344,13 @@ for _, c in customer_contracts.iterrows():
         with st.popover("➕ 회차 수동 추가 (월납 등)"):
             with st.form(f"add_payment_{contract_id}"):
                 new_회차 = st.text_input("회차 (예: 4, 또는 2026-07)", key=f"new_round_{contract_id}")
-                new_청구 = st.date_input("청구 예정일", value=None, key=f"new_due_{contract_id}")
                 new_발행 = st.date_input("발행일 (있으면)", value=None, key=f"new_issue_{contract_id}")
                 new_금액 = st.number_input("금액 (원)", min_value=0, step=10000, key=f"new_amt_{contract_id}")
-                new_메모2 = st.text_input("메모", key=f"new_memo_{contract_id}")
                 if st.form_submit_button("회차 추가"):
                     if not new_회차 or not new_금액:
                         st.error("회차와 금액은 필수입니다.")
                     else:
-                        ct.add_payment(contract_id, new_회차, new_청구, new_발행, new_금액, new_메모2)
+                        ct.add_payment(contract_id, new_회차, None, new_발행, new_금액, "")
                         st.success(f"{new_회차}회차 추가됨")
                         st.rerun()
 
