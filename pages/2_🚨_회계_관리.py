@@ -206,15 +206,22 @@ if not pay.empty:
 else:
     unpaid_all = pd.DataFrame()
 
-# 발행 누락: 청구예정 ≤ 오늘 / 발행 X
+# 발행 누락: 청구예정 ≤ 오늘 (없으면 계약일) / 발행 X
 if not pay.empty:
+    ref_date = pay["청구예정일"].where(pay["청구예정일"].notna(), pay["계약일"])
     overdue_all = pay[
-        (pay["청구예정일"].notna())
-        & (pay["청구예정일"] <= _today)
+        ref_date.notna()
+        & (ref_date <= _today)
         & (pay["발행일"].isna())
     ].copy()
     if not overdue_all.empty:
-        overdue_all["경과일"] = (_today - overdue_all["청구예정일"]).dt.days
+        overdue_all["기준일"] = overdue_all["청구예정일"].where(
+            overdue_all["청구예정일"].notna(), overdue_all["계약일"]
+        )
+        overdue_all["기준"] = overdue_all["청구예정일"].apply(
+            lambda x: "청구예정" if pd.notna(x) else "계약일"
+        )
+        overdue_all["경과일"] = (_today - overdue_all["기준일"]).dt.days
 else:
     overdue_all = pd.DataFrame()
 
@@ -318,7 +325,7 @@ else:
 # ============== 세금계산서 발행 누락 ==============
 st.markdown("## 📝 세금계산서 발행 누락")
 st.markdown(
-    '<div class="sec-meta">청구예정일 경과 · 발행 미완료 — 경과일 내림차순 · 결제 회차 단위</div>',
+    '<div class="sec-meta">청구예정일(없으면 계약일) 경과 · 발행 미완료 — 경과일 내림차순 · 결제 회차 단위</div>',
     unsafe_allow_html=True,
 )
 
@@ -328,13 +335,14 @@ elif overdue_issue.empty:
     st.info(f"'{search_query}' 검색 결과 없음 (전체 발행 누락 {len(overdue_all)}회차).")
 else:
     view = overdue_issue[[
-        "청구예정일", "경과일", "고객기관", "건명", "회차", "금액", "메모",
+        "기준일", "기준", "경과일", "고객기관", "건명", "회차", "금액", "메모",
     ]].copy()
     view = view.sort_values("경과일", ascending=False).reset_index(drop=True)
     st.dataframe(
         view,
         column_config={
-            "청구예정일": st.column_config.DateColumn("청구예정일", format="YYYY-MM-DD"),
+            "기준일": st.column_config.DateColumn("기준일", format="YYYY-MM-DD"),
+            "기준": st.column_config.TextColumn("기준", width="small", help="청구예정 = 청구예정일 / 계약일 = 청구예정일 미설정 시 계약일 fallback"),
             "경과일": st.column_config.NumberColumn("경과일", format="%d일"),
             "고객기관": st.column_config.TextColumn("고객기관"),
             "건명": st.column_config.TextColumn("건명"),
