@@ -85,14 +85,27 @@ st.markdown(
         padding: 0 6px !important;
         line-height: 1 !important;
     }}
-    /* 변경사항 저장 — 보라 채움 (primary) */
+    /* 메타 수정 popover + 변경사항 저장 — 동일 크기 강제 */
+    .stButton button[kind="primary"],
+    div[data-testid="stPopover"] button {{
+        height: 44px !important;
+        min-height: 44px !important;
+        max-height: 44px !important;
+        padding: 0 16px !important;
+        line-height: 1 !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100% !important;
+    }}
+    /* 변경사항 저장 — 보라 채움 */
     .stButton button[kind="primary"] {{
         background: {PRIMARY} !important;
         border: 1px solid {PRIMARY} !important;
         color: white !important;
-        height: 44px !important;
-        font-weight: 700 !important;
-        border-radius: 8px !important;
         box-shadow: 0 2px 8px rgba(91, 67, 201, 0.22);
     }}
     .stButton button[kind="primary"]:hover {{
@@ -101,16 +114,13 @@ st.markdown(
         box-shadow: 0 4px 12px rgba(91, 67, 201, 0.32);
     }}
     /* 계약 메타 수정 popover — 보라 아웃라인 */
-    div[data-testid="stPopover"] > div > button {{
+    div[data-testid="stPopover"] button {{
         background: white !important;
         color: {PRIMARY} !important;
         border: 1px solid {PRIMARY} !important;
-        height: 44px !important;
-        font-weight: 700 !important;
-        border-radius: 8px !important;
         box-shadow: none !important;
     }}
-    div[data-testid="stPopover"] > div > button:hover {{
+    div[data-testid="stPopover"] button:hover {{
         background: {PRIMARY_LIGHT} !important;
         border-color: {PRIMARY_DARK} !important;
         color: {PRIMARY_DARK} !important;
