@@ -360,20 +360,6 @@ for _, c in customer_contracts.iterrows():
                 else:
                     st.info("변경된 내용이 없습니다.")
 
-        # 결제 회차 수동 추가 (분납 자동 생성 외 추가 회차)
-        with st.popover("➕ 회차 수동 추가 (월납 등)"):
-            with st.form(f"add_payment_{contract_id}"):
-                new_회차 = st.text_input("회차 (예: 4, 또는 2026-07)", key=f"new_round_{contract_id}")
-                new_발행 = st.date_input("발행일 (있으면)", value=None, key=f"new_issue_{contract_id}")
-                new_금액 = st.number_input("금액 (원)", min_value=0, step=10000, key=f"new_amt_{contract_id}")
-                if st.form_submit_button("회차 추가"):
-                    if not new_회차 or not new_금액:
-                        st.error("회차와 금액은 필수입니다.")
-                    else:
-                        ct.add_payment(contract_id, new_회차, None, new_발행, new_금액, "")
-                        st.success(f"{new_회차}회차 추가됨")
-                        st.rerun()
-
         if c.get("메모"):
             st.caption(f"📝 메모: {c['메모']}")
 
