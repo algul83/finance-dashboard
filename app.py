@@ -403,67 +403,10 @@ if top_alerts:
         )
     st.markdown(f"<div class='alert-row'>{cards_html}</div>", unsafe_allow_html=True)
 
-# ============== 미수금 상세 ==============
-st.markdown("## 🚨 미수금 상세")
-st.markdown(
-    '<div class="sec-meta">세금계산서 발행 / 입금 미완료 — 발행일 오름차순</div>',
-    unsafe_allow_html=True,
+st.info(
+    "🚨 **미수금 상세 · 세금계산서 발행 누락은 [회계 관리 페이지](./회계_관리)에서 확인하세요** "
+    "(좌측 사이드바). 회수 우선순위·경과일 추적 가능."
 )
-
-if unpaid.empty:
-    st.success("미수금 없음. ✅")
-else:
-    unpaid_view = unpaid[["세금계산서발행일", "고객기관", "name", "총매출", "상태", "url"]].copy()
-    unpaid_view.columns = ["발행일", "고객기관", "건명", "금액", "상태", "Notion"]
-    unpaid_view = unpaid_view.sort_values("발행일", ascending=True).reset_index(drop=True)
-    st.dataframe(
-        unpaid_view,
-        column_config={
-            "발행일": st.column_config.DateColumn("발행일", format="YYYY-MM-DD"),
-            "고객기관": st.column_config.TextColumn("고객기관"),
-            "건명": st.column_config.TextColumn("건명"),
-            "금액": st.column_config.NumberColumn("금액 (원)", format="localized"),
-            "상태": st.column_config.TextColumn("상태"),
-            "Notion": st.column_config.LinkColumn("Notion", display_text="열기"),
-        },
-        hide_index=True,
-        use_container_width=True,
-    )
-
-# ============== 발행 누락 (계약일 경과 / 발행 X) ==============
-st.markdown("## 📝 세금계산서 발행 누락")
-st.markdown(
-    '<div class="sec-meta">계약일 경과 · 발행 미완료 (확정 건 한정) — 경과일 내림차순</div>',
-    unsafe_allow_html=True,
-)
-
-if overdue_issue.empty:
-    st.success("발행 누락 없음. ✅")
-else:
-    over_view = overdue_issue[[
-        "계약일", "경과일", "고객기관", "name", "총매출", "상태", "url",
-    ]].copy()
-    over_view.columns = ["계약일", "경과일", "고객기관", "건명", "금액", "상태", "Notion"]
-    over_view = over_view.sort_values("경과일", ascending=False).reset_index(drop=True)
-    st.dataframe(
-        over_view,
-        column_config={
-            "계약일": st.column_config.DateColumn("계약일", format="YYYY-MM-DD"),
-            "경과일": st.column_config.NumberColumn("경과일", format="%d일"),
-            "고객기관": st.column_config.TextColumn("고객기관"),
-            "건명": st.column_config.TextColumn("건명"),
-            "금액": st.column_config.NumberColumn("금액 (원)", format="localized"),
-            "상태": st.column_config.TextColumn("상태"),
-            "Notion": st.column_config.LinkColumn("Notion", display_text="열기"),
-        },
-        hide_index=True,
-        use_container_width=True,
-    )
-    total_overdue_amount = overdue_issue["총매출"].sum()
-    st.caption(
-        f"누락 합계: **{total_overdue_amount:,.0f}원** ({total_overdue_amount/1e8:.2f}억) · "
-        f"{len(overdue_issue)}건"
-    )
 
 # ============== 월별 매출 추이 ==============
 st.markdown("## 📅 월별 매출 추이")
