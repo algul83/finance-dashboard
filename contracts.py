@@ -92,8 +92,21 @@ def invalidate_cache():
     load_payments.clear()
 
 
+def _parse_분납회차(value) -> int:
+    """Notion select 값('1회'/'3회'/'12회') 또는 숫자 → int. 없으면 0."""
+    if value in (None, "", 0):
+        return 0
+    s = str(value).strip().replace("회", "").strip()
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return 0
+
+
 def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
     """Notion에서 성사 상태 건 중 Sheets에 없는 건 자동 추가.
+    Notion `분납회차` 값(예: '12회')을 읽어 Streamlit 분납회차에 저장하고
+    동일 회차 수만큼 결제 row를 자동 생성.
 
     Returns: (추가된 계약 건수, 추가된 결제 회차 건수)
     """
@@ -104,14 +117,17 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
 
     target = notion_df[notion_df["상태"].isin(CONFIRMED_STATES)].copy()
     new_contracts = []
-    new_payments = []
     now = pd.Timestamp.now()
+    # contract_id → (분납회차 int, 총금액 float, 발행일 str, 입금완료 bool)
+    contract_payment_plan = {}
 
     for _, n in target.iterrows():
         nid = str(n["id"])
         if nid in existing_notion_ids:
             continue
         cid = f"C{int(time.time() * 1000)}{len(new_contracts):03d}"
+        분납_int = _parse_분납회차(n.get("분납회차"))
+        total = float(n.get("총매출") or 0)
         contract_row = {
             "contract_id": cid,
             "notion_id": nid,
@@ -123,9 +139,9 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                 n["계약일"].strftime("%Y-%m-%d")
                 if pd.notna(n.get("계약일")) else ""
             ),
-            "총금액": float(n.get("총매출") or 0),
+            "총금액": total,
             "정산유형": n.get("정산유형") or "",
-            "분납회차": "",
+            "분납회차": 분납_int if 분납_int > 0 else "",
             "구독시작일": "",
             "구독종료일": "",
             "메모": "",
@@ -133,22 +149,15 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             "updated_at": now.strftime("%Y-%m-%d %H:%M"),
         }
         new_contracts.append(contract_row)
-
-        # Notion에 이미 세금계산서 발행일이 있으면 1회차 결제로 자동 등록
-        if pd.notna(n.get("세금계산서발행일")):
-            pid = f"P{int(time.time() * 1000)}{len(new_payments):03d}"
-            new_payments.append({
-                "payment_id": pid,
-                "contract_id": cid,
-                "회차": "1",
-                "청구예정일": "",
-                "발행일": n["세금계산서발행일"].strftime("%Y-%m-%d"),
-                "입금완료": "TRUE" if n.get("입금완료") else "FALSE",
-                "입금일": "",
-                "금액": float(n.get("총매출") or 0),
-                "메모": "Notion 동기화 자동 생성",
-                "created_at": now.strftime("%Y-%m-%d %H:%M"),
-            })
+        contract_payment_plan[cid] = {
+            "분납": 분납_int,
+            "총금액": total,
+            "발행일": (
+                n["세금계산서발행일"].strftime("%Y-%m-%d")
+                if pd.notna(n.get("세금계산서발행일")) else ""
+            ),
+            "입금완료": bool(n.get("입금완료")),
+        }
 
     if new_contracts:
         ws_c = get_worksheet("Contracts")
@@ -156,15 +165,40 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             [[c.get(col, "") for col in CONTRACT_COLUMNS] for c in new_contracts],
             value_input_option="USER_ENTERED",
         )
-    if new_payments:
+
+    # 결제 회차 생성: 분납회차 N → N개 row 모두 생성
+    # 1회차에 한해 Notion 발행일/입금완료 값을 복사
+    new_payments_total = 0
+    if new_contracts:
         ws_p = get_worksheet("Payments")
-        ws_p.append_rows(
-            [[p.get(col, "") for col in PAYMENT_COLUMNS] for p in new_payments],
-            value_input_option="USER_ENTERED",
-        )
+        payment_rows = []
+        for cid, plan in contract_payment_plan.items():
+            n_rounds = plan["분납"] if plan["분납"] > 0 else 1  # 미지정 시 기본 1회
+            per_amount = plan["총금액"] / n_rounds if n_rounds > 0 else plan["총금액"]
+            for i in range(1, n_rounds + 1):
+                pid = f"P{int(time.time() * 1000)}{len(payment_rows):03d}"
+                is_first = (i == 1)
+                payment_rows.append({
+                    "payment_id": pid,
+                    "contract_id": cid,
+                    "회차": str(i),
+                    "청구예정일": "",
+                    "발행일": plan["발행일"] if is_first else "",
+                    "입금완료": "TRUE" if (is_first and plan["입금완료"]) else "FALSE",
+                    "입금일": "",
+                    "금액": per_amount,
+                    "메모": "Notion 동기화 자동 생성" if is_first else f"{n_rounds}회 분납 자동 생성",
+                    "created_at": now.strftime("%Y-%m-%d %H:%M"),
+                })
+        if payment_rows:
+            ws_p.append_rows(
+                [[p.get(col, "") for col in PAYMENT_COLUMNS] for p in payment_rows],
+                value_input_option="USER_ENTERED",
+            )
+            new_payments_total = len(payment_rows)
 
     invalidate_cache()
-    return len(new_contracts), len(new_payments)
+    return len(new_contracts), new_payments_total
 
 
 def add_payment(contract_id: str, 회차, 청구예정일, 발행일, 금액, 메모: str = "") -> None:
@@ -235,6 +269,39 @@ def update_payment_fields(payment_id: str, **fields) -> None:
             invalidate_cache()
             return
     raise ValueError(f"payment_id {payment_id} 못 찾음")
+
+
+def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
+    """기존 Sheets 계약들 중 Notion `분납회차` 값과 다른 건 업데이트 + 회차 row 자동 생성.
+
+    Returns: (분납회차 갱신된 계약 수, 추가된 결제 회차 row 수)
+    """
+    contracts = load_contracts()
+    if contracts.empty:
+        return 0, 0
+    notion_by_id = {str(r["id"]): r for _, r in notion_df.iterrows()}
+
+    updated_contracts = 0
+    added_rows = 0
+    for _, c in contracts.iterrows():
+        nid = str(c["notion_id"])
+        if nid not in notion_by_id:
+            continue
+        n = notion_by_id[nid]
+        notion_분납 = _parse_분납회차(n.get("분납회차"))
+        sheet_분납 = int(c["분납회차"]) if pd.notna(c["분납회차"]) and c["분납회차"] != "" else 0
+
+        # 노션 값이 있고 sheet와 다르면 갱신
+        if notion_분납 > 0 and notion_분납 != sheet_분납:
+            update_contract_meta(c["contract_id"], 분납회차=notion_분납)
+            updated_contracts += 1
+            # 부족한 회차 자동 추가
+            added_rows += ensure_payment_rows(
+                c["contract_id"], notion_분납, float(c["총금액"] or 0)
+            )
+
+    invalidate_cache()
+    return updated_contracts, added_rows
 
 
 def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float) -> int:

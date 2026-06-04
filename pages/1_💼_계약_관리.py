@@ -100,6 +100,20 @@ if st.sidebar.button("🔄 Notion에서 신규 성사 건 가져오기", use_con
         except Exception as e:
             st.sidebar.error(f"동기화 실패: {e}")
 
+if st.sidebar.button("🔁 기존 계약 분납회차 일괄 갱신", use_container_width=True,
+                      help="이미 가져온 계약들에 대해 Notion의 분납회차를 반영하고 부족한 회차 row를 자동 생성합니다."):
+    with st.spinner("분납회차 갱신 중..."):
+        try:
+            notion_df = load_sales_data()
+            upd, added = ct.resync_installments_from_notion(notion_df)
+            if upd > 0:
+                st.sidebar.success(f"✅ 계약 {upd}건 분납회차 갱신, 결제 회차 {added}개 추가")
+            else:
+                st.sidebar.info("갱신할 항목 없음 (모두 최신)")
+            st.cache_data.clear()
+        except Exception as e:
+            st.sidebar.error(f"갱신 실패: {e}")
+
 if st.sidebar.button("♻️ 캐시 새로고침", use_container_width=True):
     ct.invalidate_cache()
     st.rerun()
