@@ -1,6 +1,11 @@
-# 💰 원스글로벌 회계 인사이트
+# 💰 원스글로벌 회계 인사이트 + 계약 관리
 
-Notion 2026 영업현황 DB를 회계 관점으로 가공한 Streamlit 대시보드.
+Notion 2026 영업현황 DB와 Google Sheets를 결합한 Streamlit 멀티페이지 대시보드.
+
+- **회계 인사이트 (`app.py`)**: Notion 영업현황 DB 실시간 분석
+- **계약 관리 (`pages/1_💼_계약_관리.py`)**: Google Sheets 기반 계약·결제 회차 추적
+
+> 계약 관리 첫 사용 전 [SETUP_CONTRACTS.md](SETUP_CONTRACTS.md) 참고.
 
 ## 주요 지표
 - 전체 파이프라인 / 확정 매출 / 잠재 매출 / **미수금**
