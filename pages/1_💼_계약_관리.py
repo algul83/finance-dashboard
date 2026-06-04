@@ -275,12 +275,29 @@ c4.markdown(
 )
 
 # ============== 계약 검색 ==============
-search_query = st.text_input(
-    "고객명 또는 계약명 키워드",
-    value="",
-    placeholder="예: 박**병원, 닥터디아이, ConnectCare ...",
-    help="고객기관·건명·서비스명에서 부분 일치 검색 (대소문자 무시)",
-).strip()
+def _clear_contract_search():
+    st.session_state["contract_search"] = ""
+
+
+col_in, col_clear = st.columns([6, 1])
+with col_in:
+    st.text_input(
+        "고객명 또는 계약명 키워드",
+        key="contract_search",
+        placeholder="예: 박**병원, 닥터디아이, ConnectCare ...",
+        help="고객기관·건명·서비스명에서 부분 일치 검색 (대소문자 무시)",
+    )
+with col_clear:
+    st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
+    st.button(
+        "↺ 전체 보기",
+        on_click=_clear_contract_search,
+        use_container_width=True,
+        disabled=not st.session_state.get("contract_search", "").strip(),
+        help="검색어를 지우고 전체 계약 목록으로 돌아갑니다",
+    )
+
+search_query = st.session_state.get("contract_search", "").strip()
 
 if search_query:
     q = search_query.lower()
