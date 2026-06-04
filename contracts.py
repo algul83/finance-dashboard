@@ -272,17 +272,33 @@ def update_payment_fields(payment_id: str, **fields) -> None:
 
 
 def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
-    """기존 Sheets 계약들 중 Notion `분납회차` 값과 다른 건 업데이트 + 회차 row 자동 생성.
+    """기존 Sheets 계약들 중 Notion `분납회차` 값과 다른 건 batch로 일괄 갱신.
+    API 호출을 최소화: contracts/payments 각 1번 읽고, 변경분은 batch_update로.
 
     Returns: (분납회차 갱신된 계약 수, 추가된 결제 회차 row 수)
     """
     contracts = load_contracts()
     if contracts.empty:
         return 0, 0
+    payments = load_payments()
     notion_by_id = {str(r["id"]): r for _, r in notion_df.iterrows()}
+    now = pd.Timestamp.now()
 
+    # Contracts 워크시트 batch update 준비
+    ws_c = get_worksheet("Contracts")
+    # 전체 contract row를 한 번에 읽어 contract_id → row_idx 매핑 (1행은 헤더라 +2)
+    contract_records = ws_c.get_all_records(expected_headers=CONTRACT_COLUMNS)
+    cid_to_row = {r["contract_id"]: i + 2 for i, r in enumerate(contract_records)}
+
+    contract_batch = []  # [{range, values}]
+    payments_to_add = []  # [[row]]
     updated_contracts = 0
     added_rows = 0
+    col_분납 = CONTRACT_COLUMNS.index("분납회차") + 1
+    col_upd = CONTRACT_COLUMNS.index("updated_at") + 1
+
+    from gspread.utils import rowcol_to_a1
+
     for _, c in contracts.iterrows():
         nid = str(c["notion_id"])
         if nid not in notion_by_id:
@@ -290,15 +306,46 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
         n = notion_by_id[nid]
         notion_분납 = _parse_분납회차(n.get("분납회차"))
         sheet_분납 = int(c["분납회차"]) if pd.notna(c["분납회차"]) and c["분납회차"] != "" else 0
+        if notion_분납 <= 0 or notion_분납 == sheet_분납:
+            continue
 
-        # 노션 값이 있고 sheet와 다르면 갱신
-        if notion_분납 > 0 and notion_분납 != sheet_분납:
-            update_contract_meta(c["contract_id"], 분납회차=notion_분납)
-            updated_contracts += 1
-            # 부족한 회차 자동 추가
-            added_rows += ensure_payment_rows(
-                c["contract_id"], notion_분납, float(c["총금액"] or 0)
-            )
+        cid = c["contract_id"]
+        if cid not in cid_to_row:
+            continue
+        row_idx = cid_to_row[cid]
+
+        # contract 분납회차·updated_at 일괄 업데이트
+        contract_batch.append({
+            "range": rowcol_to_a1(row_idx, col_분납),
+            "values": [[str(notion_분납)]],
+        })
+        contract_batch.append({
+            "range": rowcol_to_a1(row_idx, col_upd),
+            "values": [[now.strftime("%Y-%m-%d %H:%M")]],
+        })
+        updated_contracts += 1
+
+        # 부족한 회차 row 메모리 상에서 계산 (payments DF 활용 — 추가 read 안 함)
+        existing = payments[payments["contract_id"] == cid] if not payments.empty else pd.DataFrame()
+        existing_rounds = set(existing["회차"].astype(str)) if not existing.empty else set()
+        per_amount = float(c["총금액"] or 0) / notion_분납 if notion_분납 > 0 else 0
+        for i in range(1, notion_분납 + 1):
+            if str(i) in existing_rounds:
+                continue
+            pid = f"P{int(time.time() * 1000)}{len(payments_to_add):03d}"
+            payments_to_add.append([
+                pid, cid, str(i), "", "", "FALSE", "", per_amount,
+                f"분납 {notion_분납}회차 자동 생성",
+                now.strftime("%Y-%m-%d %H:%M"),
+            ])
+
+    # API 호출 모음: contracts batch_update + payments append (각 1 call)
+    if contract_batch:
+        ws_c.batch_update(contract_batch, value_input_option="USER_ENTERED")
+    if payments_to_add:
+        ws_p = get_worksheet("Payments")
+        ws_p.append_rows(payments_to_add, value_input_option="USER_ENTERED")
+        added_rows = len(payments_to_add)
 
     invalidate_cache()
     return updated_contracts, added_rows
