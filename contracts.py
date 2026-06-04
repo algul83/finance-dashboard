@@ -383,9 +383,12 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
 
     # Contracts 워크시트 batch update 준비
     ws_c = get_worksheet("Contracts")
-    # 전체 contract row를 한 번에 읽어 contract_id → row_idx 매핑 (1행은 헤더라 +2)
-    contract_records = ws_c.get_all_records(expected_headers=CONTRACT_COLUMNS)
-    cid_to_row = {r["contract_id"]: i + 2 for i, r in enumerate(contract_records)}
+    # 캐시된 contracts DF의 index를 row 매핑으로 사용 (1행은 헤더라 +2)
+    # → API read 1회 절약. invalidate_cache 직후 호출이라 정합성 OK.
+    cid_to_row = {
+        row["contract_id"]: i + 2
+        for i, (_, row) in enumerate(contracts.iterrows())
+    }
 
     contract_batch = []  # [{range, values}]
     payments_to_add = []  # [[row]]

@@ -180,7 +180,14 @@ if st.sidebar.button("🔁 기존 계약 분납회차 일괄 갱신", use_contai
                 st.sidebar.info("갱신할 항목 없음 (모두 최신)")
             st.cache_data.clear()
         except Exception as e:
-            st.sidebar.error(f"갱신 실패: {e}")
+            msg = str(e)
+            if "429" in msg or "Quota" in msg:
+                st.sidebar.error(
+                    "⏳ Google Sheets 분당 읽기 할당량 초과. **1분 후 다시 시도**해주세요. "
+                    "(연속 클릭·다른 페이지 동시 로드가 누적되면 발생)"
+                )
+            else:
+                st.sidebar.error(f"갱신 실패: {msg}")
 
 if st.sidebar.button("📝 기존 계약 메타 일괄 갱신", use_container_width=True,
                       help="Notion에서 고객기관·건명·서비스명·신규갱신·정산유형·계약일·총금액 변경된 건들을 Sheets에 반영합니다."):
@@ -194,7 +201,13 @@ if st.sidebar.button("📝 기존 계약 메타 일괄 갱신", use_container_wi
                 st.sidebar.info("갱신할 항목 없음 (모두 최신)")
             st.cache_data.clear()
         except Exception as e:
-            st.sidebar.error(f"갱신 실패: {e}")
+            msg = str(e)
+            if "429" in msg or "Quota" in msg:
+                st.sidebar.error(
+                    "⏳ Google Sheets 분당 읽기 할당량 초과. **1분 후 다시 시도**해주세요."
+                )
+            else:
+                st.sidebar.error(f"갱신 실패: {msg}")
 
 if st.sidebar.button("♻️ 캐시 새로고침", use_container_width=True):
     ct.invalidate_cache()

@@ -67,14 +67,16 @@ def get_sheet_id() -> str:
     return os.environ.get("CONTRACTS_SHEET_ID", "")
 
 
+@st.cache_resource
 def open_contracts_sheet():
-    """계약 Sheet 열기."""
+    """계약 Sheet 열기. open_by_key는 메타 read 1회를 소비하므로 세션 캐시."""
     sheet_id = get_sheet_id()
     if not sheet_id:
         raise RuntimeError("CONTRACTS_SHEET_ID가 secrets에 설정되지 않았습니다.")
     return _gspread_client().open_by_key(sheet_id)
 
 
+@st.cache_resource
 def get_worksheet(name: str):
-    """탭 이름으로 워크시트 가져오기."""
+    """탭 이름으로 워크시트 가져오기. 핸들은 세션 동안 재사용."""
     return open_contracts_sheet().worksheet(name)
