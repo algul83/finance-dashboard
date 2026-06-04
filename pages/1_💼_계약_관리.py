@@ -245,7 +245,7 @@ for _, c in customer_contracts.iterrows():
     paid_amount = contract_payments[contract_payments["입금완료"]]["금액"].sum() if not contract_payments.empty else 0
     progress = (paid_amount / c["총금액"] * 100) if c["총금액"] > 0 else 0
 
-    # 입금률 배지 (색상 점 + 숫자)
+    # 입금률 배지
     if progress >= 100:
         badge = f"🟢 {progress:.0f}%"
     elif progress > 0:
@@ -253,12 +253,34 @@ for _, c in customer_contracts.iterrows():
     else:
         badge = f"🔴 {progress:.0f}%"
 
-    # 건명·고객·금액·배지만 (신규갱신·정산유형은 펼친 내부 정보 셀에 표시)
-    header = (
-        f"📄 **{c['건명']}**  ·  {c['고객기관'] or '—'}  ·  "
-        f"`{c['총금액']:,.0f}원`  ·  {badge}"
-    )
-    with st.expander(header, expanded=False):
+    # 카드 박스 — 4등분(계약명·고객·금액·입금률) + 펼침 버튼
+    expand_key = f"expand_{contract_id}"
+    if expand_key not in st.session_state:
+        st.session_state[expand_key] = False
+    is_expanded = st.session_state[expand_key]
+
+    with st.container(border=True):
+        col_name, col_cust, col_amt, col_rate, col_btn = st.columns([1, 1, 1, 1, 0.18])
+        col_name.markdown(f"📄 **{c['건명'] or '—'}**")
+        col_cust.markdown(c["고객기관"] or "—")
+        col_amt.markdown(f"`{c['총금액']:,.0f}원`")
+        col_rate.markdown(badge)
+        if col_btn.button(
+            "▲" if is_expanded else "▼",
+            key=f"toggle_{contract_id}",
+            use_container_width=True,
+            help="펼치기/접기",
+        ):
+            st.session_state[expand_key] = not is_expanded
+            st.rerun()
+
+    if is_expanded:
+        with st.container():
+            st.markdown(
+                f"<div style='margin:0 0 8px 8px;color:#6B6A73;font-size:0.85rem'>"
+                f"{c['신규갱신'] or '—'} · {c['정산유형'] or '미입력'}</div>",
+                unsafe_allow_html=True,
+            )
         # 계약 정보
         info_cols = st.columns([2, 2, 2, 2])
         def _kv(label, value):
