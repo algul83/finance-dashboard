@@ -290,44 +290,6 @@ for _, c in customer_contracts.iterrows():
             unsafe_allow_html=True,
         )
 
-        # 메타데이터 수정
-        with st.popover("⚙️ 계약 메타 수정"):
-            new_분납 = st.number_input(
-                "분납 회차 (분할정산: 2 또는 3, 월납: 12 등) — 입력 시 부족한 회차가 자동 생성됩니다",
-                min_value=0, max_value=24,
-                value=int(c["분납회차"]) if pd.notna(c["분납회차"]) else 0,
-                key=f"분납_{contract_id}",
-            )
-            new_구독시작 = st.date_input(
-                "구독 시작일",
-                value=c["구독시작일"].date() if pd.notna(c["구독시작일"]) else None,
-                key=f"시작_{contract_id}",
-            )
-            new_구독종료 = st.date_input(
-                "구독 종료일",
-                value=c["구독종료일"].date() if pd.notna(c["구독종료일"]) else None,
-                key=f"종료_{contract_id}",
-            )
-            new_메모 = st.text_area("메모", value=c.get("메모", "") or "", key=f"memo_{contract_id}")
-            if st.button("저장", key=f"save_{contract_id}"):
-                ct.update_contract_meta(
-                    contract_id,
-                    분납회차=new_분납 if new_분납 > 0 else "",
-                    구독시작일=new_구독시작,
-                    구독종료일=new_구독종료,
-                    메모=new_메모,
-                )
-                # 회차 입력 시 부족한 회차 자동 생성
-                if new_분납 > 0:
-                    added = ct.ensure_payment_rows(contract_id, new_분납, c["총금액"])
-                    if added > 0:
-                        st.success(f"✅ 메타 저장 + 회차 {added}개 자동 생성")
-                    else:
-                        st.success("✅ 메타 저장 (회차는 이미 충분히 있음)")
-                else:
-                    st.success("✅ 저장 완료")
-                st.rerun()
-
         # 결제 회차 — 인라인 편집 가능
         st.markdown("**💳 결제 회차** (발행일·입금일·금액 직접 수정 → 아래 '변경사항 저장' 클릭)")
         if contract_payments.empty:
@@ -379,7 +341,50 @@ for _, c in customer_contracts.iterrows():
                 f"{r}회차 {s}" for r, s in zip(edited["회차"], status_emojis)
             ))
 
-            if st.button("💾 변경사항 저장", key=f"save_edit_{contract_id}", type="primary"):
+            btn_cols = st.columns([1, 1])
+            with btn_cols[0]:
+                with st.popover("⚙️ 계약 메타 수정", use_container_width=True):
+                    new_분납 = st.number_input(
+                        "분납 회차 (분할정산: 2 또는 3, 월납: 12 등) — 입력 시 부족한 회차가 자동 생성됩니다",
+                        min_value=0, max_value=24,
+                        value=int(c["분납회차"]) if pd.notna(c["분납회차"]) else 0,
+                        key=f"분납_{contract_id}",
+                    )
+                    new_구독시작 = st.date_input(
+                        "구독 시작일",
+                        value=c["구독시작일"].date() if pd.notna(c["구독시작일"]) else None,
+                        key=f"시작_{contract_id}",
+                    )
+                    new_구독종료 = st.date_input(
+                        "구독 종료일",
+                        value=c["구독종료일"].date() if pd.notna(c["구독종료일"]) else None,
+                        key=f"종료_{contract_id}",
+                    )
+                    new_메모 = st.text_area("메모", value=c.get("메모", "") or "", key=f"memo_{contract_id}")
+                    if st.button("저장", key=f"save_{contract_id}"):
+                        ct.update_contract_meta(
+                            contract_id,
+                            분납회차=new_분납 if new_분납 > 0 else "",
+                            구독시작일=new_구독시작,
+                            구독종료일=new_구독종료,
+                            메모=new_메모,
+                        )
+                        if new_분납 > 0:
+                            added = ct.ensure_payment_rows(contract_id, new_분납, c["총금액"])
+                            if added > 0:
+                                st.success(f"✅ 메타 저장 + 회차 {added}개 자동 생성")
+                            else:
+                                st.success("✅ 메타 저장 (회차는 이미 충분히 있음)")
+                        else:
+                            st.success("✅ 저장 완료")
+                        st.rerun()
+            save_clicked = btn_cols[1].button(
+                "💾 변경사항 저장",
+                key=f"save_edit_{contract_id}",
+                type="primary",
+                use_container_width=True,
+            )
+            if save_clicked:
                 changes_count = 0
                 for idx in edited.index:
                     orig = view.loc[idx]
