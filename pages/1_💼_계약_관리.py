@@ -286,27 +286,30 @@ for _, c in customer_contracts.iterrows():
             st.rerun()
 
     if is_expanded:
-        with st.container():
-            st.markdown(
-                f"<div style='margin:0 0 8px 8px;color:#6B6A73;font-size:0.85rem'>"
-                f"{c['신규갱신'] or '—'} · {c['정산유형'] or '미입력'}</div>",
-                unsafe_allow_html=True,
-            )
-        # 계약 정보
-        info_cols = st.columns([2, 2, 2, 2])
-        def _kv(label, value):
-            v = str(value) if value not in (None, "") else "—"
-            return f"<div style='font-size:0.78rem;color:#6B6A73;margin-bottom:2px'>{label}</div><div style='font-size:0.95rem;font-weight:600'>{v}</div>"
-        info_cols[0].markdown(_kv("계약일", c["계약일"].strftime("%Y-%m-%d") if pd.notna(c["계약일"]) else None), unsafe_allow_html=True)
-        info_cols[1].markdown(_kv("서비스", c["서비스명"]), unsafe_allow_html=True)
-        info_cols[2].markdown(_kv("정산유형", c["정산유형"] or "미입력"), unsafe_allow_html=True)
-        info_cols[3].markdown(
-            _kv("분납 회차", f"{int(c['분납회차'])}회" if pd.notna(c["분납회차"]) else None),
+        # 계약 정보 — 카드 안에 보조 라벨 + 값 (균일 크기·간격)
+        st.markdown(
+            "<div style='margin: 8px 0 4px; display: grid; "
+            "grid-template-columns: repeat(4, 1fr); gap: 16px; "
+            "background: #FAFAFC; border: 1px solid #EDECF1; "
+            "border-radius: 8px; padding: 14px 18px;'>"
+            f"<div><div style='font-size:0.72rem;color:#6B6A73;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px'>계약일</div>"
+            f"<div style='font-size:0.95rem;font-weight:600'>{c['계약일'].strftime('%Y-%m-%d') if pd.notna(c['계약일']) else '—'}</div></div>"
+            f"<div><div style='font-size:0.72rem;color:#6B6A73;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px'>서비스</div>"
+            f"<div style='font-size:0.95rem;font-weight:600'>{c['서비스명'] or '—'}</div></div>"
+            f"<div><div style='font-size:0.72rem;color:#6B6A73;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px'>정산유형</div>"
+            f"<div style='font-size:0.95rem;font-weight:600'>{c['정산유형'] or '미입력'}</div></div>"
+            f"<div><div style='font-size:0.72rem;color:#6B6A73;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px'>분납 회차</div>"
+            f"<div style='font-size:0.95rem;font-weight:600'>"
+            f"{int(c['분납회차']) if pd.notna(c['분납회차']) else '—'}회</div></div>"
+            "</div>",
             unsafe_allow_html=True,
         )
 
-        # 결제 회차 — 인라인 편집 가능
-        st.markdown("**💳 결제 회차** (발행일·입금일·금액 직접 수정 → 아래 '변경사항 저장' 클릭)")
+        # 결제 회차
+        st.markdown(
+            "<div style='margin: 18px 0 8px; font-weight:700; font-size:1rem'>💳 결제 회차</div>",
+            unsafe_allow_html=True,
+        )
         if contract_payments.empty:
             st.caption("등록된 결제 회차가 없습니다. ⚙️ 계약 메타에서 분납 회차를 입력하거나 ➕ 회차 추가로 등록하세요.")
         else:
@@ -317,8 +320,9 @@ for _, c in customer_contracts.iterrows():
             view = view.reset_index(drop=True)
             for col in ("발행일", "입금일"):
                 view[col] = pd.to_datetime(view[col], errors="coerce")
-            view["금액"] = view["금액"].astype(float)
-            view["고객입금액"] = view["고객입금액"].astype(float)
+            # 금액은 정수로 (소수점 제거)
+            view["금액"] = view["금액"].astype(float).round().astype("Int64")
+            view["고객입금액"] = view["고객입금액"].astype(float).round().astype("Int64")
             # 고객입금액 미설정(0) → 금액과 동일 (기존 데이터 호환)
             view.loc[view["고객입금액"] == 0, "고객입금액"] = view.loc[view["고객입금액"] == 0, "금액"]
 
@@ -330,12 +334,12 @@ for _, c in customer_contracts.iterrows():
                     "발행일": st.column_config.DateColumn("세금계산서 발행일", format="YYYY-MM-DD"),
                     "금액": st.column_config.NumberColumn(
                         "매출액 (부가세포함)",
-                        format="accounting",
+                        format="localized",
                         help="세금계산서 발행 금액",
                     ),
                     "고객입금액": st.column_config.NumberColumn(
                         "고객 입금액",
-                        format="accounting",
+                        format="localized",
                         help="실제 입금된 금액 (관세·부가세 대납 등으로 발행액과 다를 수 있음)",
                     ),
                     "입금일": st.column_config.DateColumn(
@@ -351,10 +355,13 @@ for _, c in customer_contracts.iterrows():
             )
 
             # 편집 결과 실시간 상태 미리보기 (저장 후 헤더 배지에 반영)
-            status_emojis = ["✅ 입금완료" if pd.notna(d) else "⬜ 미입금" for d in edited["입금일"]]
-            st.caption("상태 (실시간 미리보기): " + " · ".join(
-                f"{r}회차 {s}" for r, s in zip(edited["회차"], status_emojis)
-            ))
+            status_emojis = ["✅ 입금" if pd.notna(d) else "⬜ 미입금" for d in edited["입금일"]]
+            st.markdown(
+                f"<div style='margin: 6px 0 14px; font-size:0.78rem; color:#6B6A73'>"
+                f"실시간 미리보기 · {' · '.join(f'{r}회차 {s}' for r, s in zip(edited['회차'], status_emojis))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
             btn_cols = st.columns([1, 1])
             with btn_cols[0]:
