@@ -36,22 +36,22 @@ PAYMENT_COLUMNS = [
     "발행일",
     "입금완료",          # "TRUE"/"FALSE"
     "입금일",
-    "금액",
+    "금액",              # 세금계산서 발행 금액
+    "고객입금액",        # 실제 입금된 금액 (관세·부가세 대납 등으로 발행액과 다를 수 있음)
     "메모",
     "created_at",
 ]
 
 
 def _ensure_headers(ws, expected_headers: list[str]) -> None:
-    """1행 헤더 자동 셋업. 비어있거나 첫 컬럼이 다르면 expected_headers로 덮어씀."""
+    """1행 헤더 자동 셋업. 비어있거나 expected 컬럼 누락 시 덮어씀."""
     try:
         row1 = ws.row_values(1)
     except Exception:
         row1 = []
-    # 첫 컬럼이 expected[0]과 일치하면 정상으로 간주
-    if row1 and row1[0] == expected_headers[0]:
+    # row1이 expected_headers의 모든 컬럼을 앞에서부터 포함하면 OK (뒤 추가 컬럼은 무시)
+    if len(row1) >= len(expected_headers) and row1[: len(expected_headers)] == expected_headers:
         return
-    # 비었거나 첫 컬럼이 다르면 헤더 작성 (기존 데이터가 있으면 행을 밀어내지 않고 1행만 덮어씀)
     ws.update("A1", [expected_headers], value_input_option="USER_ENTERED")
 
 
@@ -80,11 +80,24 @@ def load_payments() -> pd.DataFrame:
         return pd.DataFrame(columns=PAYMENT_COLUMNS)
     df = pd.DataFrame(data)
     df["금액"] = pd.to_numeric(df.get("금액", 0), errors="coerce").fillna(0)
+    df["고객입금액"] = pd.to_numeric(df.get("고객입금액", 0), errors="coerce").fillna(0)
     df["입금완료"] = df.get("입금완료", "FALSE").astype(str).str.upper() == "TRUE"
     for c in ("청구예정일", "발행일", "입금일"):
         if c in df.columns:
             df[c] = pd.to_datetime(df[c], errors="coerce")
     return df
+
+
+def effective_paid_amount(payments: pd.DataFrame) -> float:
+    """실제 입금된 금액 합. 고객입금액 > 0이면 그 값, 아니면 금액으로 fallback.
+    입금완료=True 인 행만 합산."""
+    if payments.empty:
+        return 0.0
+    paid = payments[payments["입금완료"]]
+    if paid.empty:
+        return 0.0
+    effective = paid["고객입금액"].where(paid["고객입금액"] > 0, paid["금액"])
+    return float(effective.sum())
 
 
 def invalidate_cache():
@@ -187,6 +200,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                     "입금완료": "TRUE" if (is_first and plan["입금완료"]) else "FALSE",
                     "입금일": "",
                     "금액": per_amount,
+                    "고객입금액": per_amount,  # 기본값: 발행액과 동일 (필요 시 표에서 직접 수정)
                     "메모": "Notion 동기화 자동 생성" if is_first else f"{n_rounds}회 분납 자동 생성",
                     "created_at": now.strftime("%Y-%m-%d %H:%M"),
                 })
@@ -417,7 +431,7 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                 continue
             pid = f"P{int(time.time() * 1000)}{len(payments_to_add):03d}"
             payments_to_add.append([
-                pid, cid, str(i), "", "", "FALSE", "", per_amount,
+                pid, cid, str(i), "", "", "FALSE", "", per_amount, per_amount,
                 f"분납 {notion_분납}회차 자동 생성",
                 now.strftime("%Y-%m-%d %H:%M"),
             ])
@@ -461,6 +475,7 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
             "입금완료": "FALSE",
             "입금일": "",
             "금액": per_amount,
+            "고객입금액": per_amount,
             "메모": f"분납 {target_count}회차 자동 생성",
             "created_at": now.strftime("%Y-%m-%d %H:%M"),
         })

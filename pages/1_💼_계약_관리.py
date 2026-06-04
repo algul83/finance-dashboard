@@ -179,7 +179,7 @@ if contracts_df.empty:
 
 # ============== 상단 KPI ==============
 total_amount = contracts_df["총금액"].sum()
-total_paid = payments_df[payments_df["입금완료"]]["금액"].sum() if not payments_df.empty else 0
+total_paid = ct.effective_paid_amount(payments_df)
 total_unpaid = total_amount - total_paid
 collection_rate = (total_paid / total_amount * 100) if total_amount > 0 else 0
 
@@ -223,13 +223,9 @@ else:
 # 고객별 요약 (선택 시)
 if selected_customer != "(전체)":
     cust_total = customer_contracts["총금액"].sum()
-    cust_paid = (
-        payments_df[
-            (payments_df["contract_id"].isin(customer_contracts["contract_id"]))
-            & (payments_df["입금완료"])
-        ]["금액"].sum()
-        if not payments_df.empty else 0
-    )
+    cust_paid = ct.effective_paid_amount(
+        payments_df[payments_df["contract_id"].isin(customer_contracts["contract_id"])]
+    ) if not payments_df.empty else 0
     cust_unpaid = cust_total - cust_paid
     cc1, cc2, cc3 = st.columns(3)
     cc1.metric(f"{selected_customer} 계약", f"{len(customer_contracts)}건")
@@ -242,7 +238,7 @@ st.markdown(f"### 📋 계약 목록 ({len(customer_contracts)}건)")
 for _, c in customer_contracts.iterrows():
     contract_id = c["contract_id"]
     contract_payments = payments_df[payments_df["contract_id"] == contract_id] if not payments_df.empty else pd.DataFrame()
-    paid_amount = contract_payments[contract_payments["입금완료"]]["금액"].sum() if not contract_payments.empty else 0
+    paid_amount = ct.effective_paid_amount(contract_payments)
     progress = (paid_amount / c["총금액"] * 100) if c["총금액"] > 0 else 0
 
     # 입금률 배지
@@ -337,24 +333,33 @@ for _, c in customer_contracts.iterrows():
         if contract_payments.empty:
             st.caption("등록된 결제 회차가 없습니다. ⚙️ 계약 메타에서 분납 회차를 입력하거나 ➕ 회차 추가로 등록하세요.")
         else:
-            # 인라인 편집용 view 구성 (청구예정일·메모 제외)
+            # 인라인 편집용 view 구성: 회차·발행일·금액·고객입금액·입금일
             view = contract_payments.sort_values("회차")[[
-                "payment_id", "회차", "발행일", "금액", "입금일",
+                "payment_id", "회차", "발행일", "금액", "고객입금액", "입금일",
             ]].copy()
             view = view.reset_index(drop=True)
             for col in ("발행일", "입금일"):
                 view[col] = pd.to_datetime(view[col], errors="coerce")
             view["금액"] = view["금액"].astype(float)
+            view["고객입금액"] = view["고객입금액"].astype(float)
+            # 고객입금액 미설정(0) → 금액과 동일 (기존 데이터 호환)
+            view.loc[view["고객입금액"] == 0, "고객입금액"] = view.loc[view["고객입금액"] == 0, "금액"]
 
             edited = st.data_editor(
                 view,
                 column_config={
-                    "payment_id": None,  # 숨김
+                    "payment_id": None,
                     "회차": st.column_config.TextColumn("회차", disabled=True, width="small"),
                     "발행일": st.column_config.DateColumn("발행일", format="YYYY-MM-DD"),
                     "금액": st.column_config.NumberColumn(
-                        "금액",
-                        format="accounting",  # 1,234,567 콤마 + 음수 괄호
+                        "발행 금액",
+                        format="accounting",
+                        help="세금계산서 발행액",
+                    ),
+                    "고객입금액": st.column_config.NumberColumn(
+                        "고객 입금액",
+                        format="accounting",
+                        help="실제 입금된 금액 (관세·부가세 대납 등으로 발행액과 다를 수 있음)",
                     ),
                     "입금일": st.column_config.DateColumn(
                         "입금일",
@@ -381,7 +386,7 @@ for _, c in customer_contracts.iterrows():
                     new = edited.loc[idx]
                     pid = orig["payment_id"]
                     diffs = {}
-                    for col in ("발행일", "입금일", "금액"):
+                    for col in ("발행일", "입금일", "금액", "고객입금액"):
                         a, b = orig[col], new[col]
                         if pd.isna(a) and pd.isna(b):
                             continue
