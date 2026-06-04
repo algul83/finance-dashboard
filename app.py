@@ -9,6 +9,47 @@ import streamlit as st
 
 from data_loader import explode_services, load_sales_data
 
+
+def classify_contract(row) -> str:
+    """신규/갱신 + 정산유형 → 계약 타입.
+    - 일회성 계약: 신규/갱신='일회성'
+    - 구독 (1회 선납): 신규·갱신 + 1회정산
+    - 구독 (월납): 신규·갱신 + 매월정산
+    - 구독 (분납): 신규·갱신 + 분할정산
+    - 구독 (정산유형 미입력): 신규·갱신 + 정산유형 미입력
+    """
+    nr = row.get("신규갱신")
+    st_type = row.get("정산유형")
+    if nr == "일회성":
+        return "일회성 계약"
+    if nr in ("신규", "갱신"):
+        if st_type == "1회정산":
+            return "구독 (1회 선납)"
+        if st_type == "매월정산":
+            return "구독 (월납)"
+        if st_type == "분할정산":
+            return "구독 (분납)"
+        return "구독 (정산유형 미입력)"
+    return "분류 불명"
+
+
+CONTRACT_TYPE_ORDER = [
+    "일회성 계약",
+    "구독 (1회 선납)",
+    "구독 (월납)",
+    "구독 (분납)",
+    "구독 (정산유형 미입력)",
+    "분류 불명",
+]
+CONTRACT_TYPE_EMOJI = {
+    "일회성 계약": "🎫",
+    "구독 (1회 선납)": "💰",
+    "구독 (월납)": "📆",
+    "구독 (분납)": "🧩",
+    "구독 (정산유형 미입력)": "⚠️",
+    "분류 불명": "❓",
+}
+
 # ============== 색상 (원스글로벌 통일 팔레트) ==============
 PRIMARY = "#5B43C9"
 PRIMARY_DARK = "#4A35B0"
@@ -399,6 +440,122 @@ if not issued.empty:
         st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("계약일·발행일 모두 채워진 건이 없음.")
+
+# ============== 계약 관리 (성공·입금완료·정산완료) ==============
+st.markdown("## 💼 계약 관리 — 성사 건 (성공 · 입금완료 · 정산완료)")
+st.caption("계약 타입 분류: `신규/갱신` + `정산유형` 조합 기준. 미입력 건은 정산유형 채워야 정확히 분류됩니다.")
+
+confirmed_mgmt = fdf[fdf["상태"].isin(confirmed_states)].copy()
+confirmed_mgmt["계약타입"] = confirmed_mgmt.apply(classify_contract, axis=1)
+
+# 타입별 KPI
+type_agg = (
+    confirmed_mgmt.groupby("계약타입")
+    .agg(건수=("name", "count"), 매출=("총매출", "sum"))
+    .reset_index()
+)
+type_agg["계약타입"] = pd.Categorical(
+    type_agg["계약타입"], categories=CONTRACT_TYPE_ORDER, ordered=True
+)
+type_agg = type_agg.sort_values("계약타입").dropna(subset=["계약타입"])
+
+if not type_agg.empty:
+    cols = st.columns(len(type_agg))
+    for col, (_, row) in zip(cols, type_agg.iterrows()):
+        emoji = CONTRACT_TYPE_EMOJI.get(row["계약타입"], "")
+        col.markdown(
+            f'<div class="kpi-box"><div class="kpi-label">{emoji} {row["계약타입"]}</div>'
+            f'<div class="kpi-value">{row["건수"]}건</div>'
+            f'<div class="kpi-sub">{row["매출"]/1e8:.2f}억</div></div>',
+            unsafe_allow_html=True,
+        )
+
+# 타입별 상세표 (확장 가능)
+st.markdown("### 📋 계약 타입별 상세")
+
+for ct in CONTRACT_TYPE_ORDER:
+    rows = confirmed_mgmt[confirmed_mgmt["계약타입"] == ct]
+    if rows.empty:
+        continue
+    emoji = CONTRACT_TYPE_EMOJI.get(ct, "")
+    total_rev = rows["총매출"].sum()
+    paid_count = rows["입금완료"].sum()
+    expand = ct in ("구독 (월납)", "구독 (분납)", "구독 (정산유형 미입력)")
+    with st.expander(
+        f"{emoji} **{ct}** — {len(rows)}건 · {total_rev/1e8:.2f}억 · 입금완료 체크 {paid_count}/{len(rows)}",
+        expanded=expand,
+    ):
+        view = rows[[
+            "고객기관", "name", "서비스명", "총매출",
+            "계약일", "세금계산서발행일", "입금완료", "상태", "url",
+        ]].copy()
+        view.columns = ["고객기관", "건명", "서비스", "금액",
+                        "계약일", "발행일", "입금완료", "상태", "Notion"]
+
+        # 표시용 포맷
+        view["금액"] = view["금액"].apply(lambda v: f"{v:,.0f}원")
+        view["서비스"] = view["서비스"].apply(lambda lst: ", ".join(lst) if lst else "")
+        view["계약일"] = view["계약일"].dt.strftime("%Y-%m-%d").fillna("-")
+        view["발행일"] = view["발행일"].dt.strftime("%Y-%m-%d").fillna("-")
+        view["입금완료"] = view["입금완료"].apply(lambda b: "✅" if b else "⬜")
+
+        # 월납 계약은 다음 청구 예상월 추가
+        if ct == "구독 (월납)":
+            next_months = []
+            for _, r in rows.iterrows():
+                base = r["세금계산서발행일"] if pd.notna(r["세금계산서발행일"]) else r["계약일"]
+                if pd.notna(base):
+                    nxt = base + pd.DateOffset(months=1)
+                    next_months.append(nxt.strftime("%Y-%m"))
+                else:
+                    next_months.append("-")
+            view.insert(6, "다음 청구 예상", next_months)
+
+        st.dataframe(
+            view,
+            column_config={
+                "Notion": st.column_config.LinkColumn("Notion", display_text="열기"),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        # 타입별 가이드 메모
+        if ct == "구독 (월납)":
+            st.caption(
+                "ℹ️ 월납은 매월 세금계산서 발행 필요. 현재 DB는 계약 단위 1행이라 "
+                "월별 발행 이력 추적이 어렵습니다. 정확한 관리를 위해 `매월 발행 회차` 컬럼 추가 권장."
+            )
+        elif ct == "구독 (분납)":
+            st.caption(
+                "ℹ️ 분납은 2회 또는 3회 분할. 현재 DB는 `분납 회차` `다음 분납일` 컬럼이 "
+                "없어 진행 상황 추적이 어렵습니다. 컬럼 추가 권장."
+            )
+        elif ct == "구독 (정산유형 미입력)":
+            st.warning(
+                "정산유형이 미입력된 구독 계약. 1회 선납·월납·분납 중 어느 것인지 "
+                "Notion에서 입력해주세요."
+            )
+
+# 데이터 품질 + 스키마 개선 제안
+with st.expander("🛠️ Notion DB 스키마 개선 제안 (월납·분납 관리용)", expanded=False):
+    st.markdown("""
+**현재 한계**: DB는 계약 단위 1행이라 월납(12회 발행)·분납(2~3회) 회차별 추적 불가.
+
+**권장 컬럼 추가** (영업현황 DB):
+
+| 컬럼명 | 타입 | 용도 |
+|---|---|---|
+| `분납 회차 (예정)` | Number | 분할정산일 경우 총 회차 (2 또는 3) |
+| `분납 진행` | Number | 현재까지 발행·입금된 회차 |
+| `다음 청구 예정일` | Date | 다음 세금계산서 발행 예정일 |
+| `구독 시작일` | Date | 연간 구독 시작일 (계약일과 다를 수 있음) |
+| `구독 종료일` | Date | 연간 구독 종료일 |
+| `결제 이력 메모` | Text | "1회: 2026-04-16 / 2회: 2026-07-16 예정" 형식 |
+
+**더 정확한 관리를 원하면**: 결제 이력 전용 sub-DB 분리. 계약 1건 → 결제 N건 relation.
+이 경우 별도 DB 설계가 필요해서 1~2시간 작업.
+""")
 
 # ============== 종합 인사이트 ==============
 st.markdown("## 🔍 종합 인사이트")
