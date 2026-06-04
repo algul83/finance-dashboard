@@ -195,9 +195,14 @@ def _apply_search(d: pd.DataFrame) -> pd.DataFrame:
 # ============== 집계 ==============
 _today = pd.Timestamp.today().normalize()
 
-# 미수금: 세금계산서 발행 O / 입금 X
+# 미수금: 세금계산서 발행 후 30일 초과 / 입금 X
 if not pay.empty:
-    unpaid_all = pay[(pay["발행일"].notna()) & (~pay["입금완료"])].copy()
+    elapsed = (_today - pay["발행일"]).dt.days
+    unpaid_all = pay[
+        pay["발행일"].notna()
+        & (elapsed > 30)
+        & (~pay["입금완료"])
+    ].copy()
     if not unpaid_all.empty:
         unpaid_all["미수잔액"] = (
             unpaid_all["금액"] - unpaid_all["고객입금액"].fillna(0)
@@ -246,7 +251,7 @@ c1.markdown(
     kpi_card(
         "미수금",
         f"{total_unpaid/1e8:.2f}억",
-        f"{len(unpaid)}회차 · 발행 완료 / 입금 X",
+        f"{len(unpaid)}회차 · 발행 후 30일 초과 / 입금 X",
         danger=True,
     ),
     unsafe_allow_html=True,
@@ -272,7 +277,7 @@ c3.markdown(
 # ============== 미수금 상세 ==============
 st.markdown("## 🚨 미수금 상세")
 st.markdown(
-    '<div class="sec-meta">세금계산서 발행 완료 · 입금 미완료 — 경과일 내림차순 · 결제 회차 단위</div>',
+    '<div class="sec-meta">발행 후 30일 초과 · 입금 미완료 — 경과일 내림차순 · 결제 회차 단위</div>',
     unsafe_allow_html=True,
 )
 
