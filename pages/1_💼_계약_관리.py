@@ -85,30 +85,43 @@ st.markdown(
         padding: 0 6px !important;
         line-height: 1 !important;
     }}
-    /* 메타 수정 popover + 변경사항 저장 — 동일 크기 강제 */
-    .stButton button[kind="primary"],
-    div[data-testid="stPopover"] button {{
+    /* 메타 수정 popover wrapper도 buttom과 동일 크기 강제 */
+    div[data-testid="stPopover"] {{
+        width: 100% !important;
+    }}
+    div[data-testid="stPopover"] > div,
+    div[data-testid="stPopover"] > div > div {{
+        width: 100% !important;
+        height: 44px !important;
+    }}
+    /* 메타 수정 popover + 변경사항 저장 버튼 본체 — 동일 크기 강제 */
+    .stButton > button[kind="primary"],
+    div[data-testid="stPopover"] button,
+    button[kind="popover"],
+    [data-testid="stPopoverButton"] {{
         height: 44px !important;
         min-height: 44px !important;
         max-height: 44px !important;
-        padding: 0 16px !important;
+        padding: 0 12px !important;
         line-height: 1 !important;
         font-weight: 700 !important;
+        font-size: 0.9rem !important;
         border-radius: 8px !important;
         box-sizing: border-box !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         width: 100% !important;
+        margin: 0 !important;
     }}
     /* 변경사항 저장 — 보라 채움 */
-    .stButton button[kind="primary"] {{
+    .stButton > button[kind="primary"] {{
         background: {PRIMARY} !important;
         border: 1px solid {PRIMARY} !important;
         color: white !important;
         box-shadow: 0 2px 8px rgba(91, 67, 201, 0.22);
     }}
-    .stButton button[kind="primary"]:hover {{
+    .stButton > button[kind="primary"]:hover {{
         background: {PRIMARY_DARK} !important;
         border-color: {PRIMARY_DARK} !important;
         box-shadow: 0 4px 12px rgba(91, 67, 201, 0.32);
@@ -403,7 +416,7 @@ for _, c in customer_contracts.iterrows():
                 unsafe_allow_html=True,
             )
 
-            btn_cols = st.columns([1, 1])
+            btn_cols = st.columns([1, 1, 1])
             with btn_cols[0]:
                 with st.popover("⚙️ 계약 메타 수정", use_container_width=True):
                     new_분납 = st.number_input(
