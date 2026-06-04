@@ -206,14 +206,11 @@ if not pay.empty:
 else:
     unpaid_all = pd.DataFrame()
 
-# 발행 누락: 계약일 ≤ 오늘 / 발행 X
+# 발행 누락: payments.발행일이 비어있는 모든 회차
 if not pay.empty:
-    overdue_all = pay[
-        pay["계약일"].notna()
-        & (pay["계약일"] <= _today)
-        & (pay["발행일"].isna())
-    ].copy()
+    overdue_all = pay[pay["발행일"].isna()].copy()
     if not overdue_all.empty:
+        # 경과일 = today - 계약일 (계약일 없으면 NaN)
         overdue_all["경과일"] = (_today - overdue_all["계약일"]).dt.days
 else:
     overdue_all = pd.DataFrame()
@@ -255,7 +252,7 @@ c2.markdown(
     kpi_card(
         "발행 누락",
         f"{total_overdue/1e8:.2f}억",
-        f"{len(overdue_issue)}회차 · 계약일 경과 / 발행 X",
+        f"{len(overdue_issue)}회차 · 발행일 미입력",
         warn=True,
     ),
     unsafe_allow_html=True,
@@ -318,7 +315,7 @@ else:
 # ============== 세금계산서 발행 누락 ==============
 st.markdown("## 📝 세금계산서 발행 누락")
 st.markdown(
-    '<div class="sec-meta">계약일 경과 · 발행 미완료 — 경과일 내림차순 · 결제 회차 단위</div>',
+    '<div class="sec-meta">payments.발행일 미입력 회차 — 경과일 내림차순</div>',
     unsafe_allow_html=True,
 )
 
@@ -330,12 +327,12 @@ else:
     view = overdue_issue[[
         "계약일", "경과일", "고객기관", "건명", "회차", "금액", "메모",
     ]].copy()
-    view = view.sort_values("경과일", ascending=False).reset_index(drop=True)
+    view = view.sort_values("경과일", ascending=False, na_position="last").reset_index(drop=True)
     st.dataframe(
         view,
         column_config={
             "계약일": st.column_config.DateColumn("계약일", format="YYYY-MM-DD"),
-            "경과일": st.column_config.NumberColumn("경과일", format="%d일"),
+            "경과일": st.column_config.NumberColumn("경과일", format="%d일", help="today − 계약일 (계약일 미입력 시 표시 안 됨)"),
             "고객기관": st.column_config.TextColumn("고객기관"),
             "건명": st.column_config.TextColumn("건명"),
             "회차": st.column_config.TextColumn("회차", width="small"),
