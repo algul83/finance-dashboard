@@ -138,33 +138,18 @@ st.markdown(
         border-color: {PRIMARY_DARK} !important;
         color: {PRIMARY_DARK} !important;
     }}
-    /* 결제 회차 — 커스텀 HTML 테이블 */
-    table.payment-table {{
-        width: 100%;
-        border-collapse: collapse;
-        margin: 8px 0 14px;
-        font-size: 0.88rem;
-        table-layout: fixed;
+    /* 결제 회차 data_editor — 헤더 연보라 (glide-data-grid CSS 변수) */
+    div[data-testid="stDataFrame"],
+    div[data-testid="stDataEditor"],
+    div[data-testid="stDataFrameResizable"] {{
+        --gdg-bg-header: {PRIMARY_LIGHT} !important;
+        --gdg-bg-header-has-focus: #E1D5F7 !important;
+        --gdg-bg-header-hovered: #E5DAF9 !important;
+        --gdg-header-bottom-border-color: #D6C9F2 !important;
+        --gdg-text-header: {PRIMARY_DARK} !important;
+        --gdg-text-header-selected: {PRIMARY_DARK} !important;
+        --gdg-horizontal-border-color: #ECEAF3 !important;
     }}
-    table.payment-table th {{
-        background: {PRIMARY_LIGHT};
-        color: {PRIMARY_DARK};
-        font-weight: 700;
-        padding: 11px 10px;
-        text-align: center;
-        border-bottom: 2px solid #D6C9F2;
-        font-size: 0.82rem;
-        letter-spacing: 0.01em;
-    }}
-    table.payment-table td {{
-        padding: 11px 10px;
-        text-align: center;
-        border-bottom: 1px solid #ECEAF3;
-        color: #1F1E29;
-    }}
-    table.payment-table tr:last-child td {{ border-bottom: none; }}
-    table.payment-table tr:hover td {{ background: #FAFAFC; }}
-    table.payment-table td.muted {{ color: #B0AEBD; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -404,46 +389,39 @@ for _, c in customer_contracts.iterrows():
             view["고객입금액"] = view["고객입금액"].astype(float).round().astype("Int64")
             view.loc[view["고객입금액"] == 0, "고객입금액"] = view.loc[view["고객입금액"] == 0, "금액"]
 
-            # 커스텀 HTML 테이블 (읽기 전용, 전셀 가운데 정렬, 연보라 헤더)
-            def _cell(val, is_amount=False, is_date=False):
-                if pd.isna(val) or (isinstance(val, (int, float)) and val == 0 and is_amount):
-                    return "<td class='muted'>—</td>"
-                if is_date:
-                    return f"<td>{val.strftime('%Y-%m-%d')}</td>"
-                if is_amount:
-                    return f"<td>{int(val):,}</td>"
-                return f"<td>{val}</td>"
-
-            rows_html = []
-            for _, r in view.iterrows():
-                rows_html.append(
-                    "<tr>"
-                    f"<td>{r['회차']}</td>"
-                    f"{_cell(r['발행일'], is_date=True)}"
-                    f"{_cell(r['금액'], is_amount=True)}"
-                    f"{_cell(r['고객입금액'], is_amount=True)}"
-                    f"{_cell(r['입금일'], is_date=True)}"
-                    "</tr>"
-                )
-            st.markdown(
-                "<table class='payment-table'>"
-                "<thead><tr>"
-                "<th style='width:8%'>회차</th>"
-                "<th style='width:23%'>세금계산서 발행일</th>"
-                "<th style='width:23%'>매출액 (부가세포함)</th>"
-                "<th style='width:23%'>고객 입금액</th>"
-                "<th style='width:23%'>입금일</th>"
-                "</tr></thead>"
-                f"<tbody>{''.join(rows_html)}</tbody>"
-                "</table>",
-                unsafe_allow_html=True,
+            edited = st.data_editor(
+                view,
+                column_config={
+                    "payment_id": None,
+                    "회차": st.column_config.TextColumn("회차", disabled=True, width="small"),
+                    "발행일": st.column_config.DateColumn("세금계산서 발행일", format="YYYY-MM-DD"),
+                    "금액": st.column_config.NumberColumn(
+                        "매출액 (부가세포함)",
+                        format="localized",
+                        help="세금계산서 발행 금액",
+                    ),
+                    "고객입금액": st.column_config.NumberColumn(
+                        "고객 입금액",
+                        format="localized",
+                        help="실제 입금된 금액 (관세·부가세 대납 등으로 발행액과 다를 수 있음)",
+                    ),
+                    "입금일": st.column_config.DateColumn(
+                        "입금일",
+                        format="YYYY-MM-DD",
+                        help="날짜를 입력하면 자동으로 입금완료(✅) 처리됩니다",
+                    ),
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="fixed",
+                key=f"editor_{contract_id}",
             )
 
-            # 입금 상태 요약
-            status_emojis = ["✅ 입금" if pd.notna(d) else "⬜ 미입금" for d in view["입금일"]]
+            # 편집 결과 실시간 상태 미리보기
+            status_emojis = ["✅ 입금" if pd.notna(d) else "⬜ 미입금" for d in edited["입금일"]]
             st.markdown(
-                f"<div style='margin: 0 0 14px; font-size:0.78rem; color:#6B6A73'>"
-                f"입금 상태 · {' · '.join(f'{r}회차 {s}' for r, s in zip(view['회차'], status_emojis))}"
+                f"<div style='margin: 6px 0 14px; font-size:0.78rem; color:#6B6A73'>"
+                f"실시간 미리보기 · {' · '.join(f'{r}회차 {s}' for r, s in zip(edited['회차'], status_emojis))}"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -485,57 +463,38 @@ for _, c in customer_contracts.iterrows():
                         else:
                             st.success("✅ 저장 완료")
                         st.rerun()
-            with btn_cols[1]:
-                with st.popover("✏️ 회차 수정", use_container_width=True):
-                    round_labels = [f"{r}회차" for r in view["회차"]]
-                    sel_label = st.selectbox(
-                        "수정할 회차",
-                        round_labels,
-                        key=f"round_sel_{contract_id}",
-                    )
-                    sel_idx = round_labels.index(sel_label)
-                    sel_row = view.iloc[sel_idx]
-                    pid = sel_row["payment_id"]
-
-                    new_발행 = st.date_input(
-                        "세금계산서 발행일",
-                        value=sel_row["발행일"].date() if pd.notna(sel_row["발행일"]) else None,
-                        key=f"발행_{contract_id}_{pid}",
-                    )
-                    new_금액 = st.number_input(
-                        "매출액 (부가세포함)",
-                        min_value=0,
-                        value=int(sel_row["금액"]) if pd.notna(sel_row["금액"]) else 0,
-                        step=10000,
-                        key=f"금액_{contract_id}_{pid}",
-                    )
-                    new_고객 = st.number_input(
-                        "고객 입금액",
-                        min_value=0,
-                        value=int(sel_row["고객입금액"]) if pd.notna(sel_row["고객입금액"]) else 0,
-                        step=10000,
-                        key=f"고객_{contract_id}_{pid}",
-                    )
-                    new_입금일 = st.date_input(
-                        "입금일 (입력 시 자동 ✅ 처리)",
-                        value=sel_row["입금일"].date() if pd.notna(sel_row["입금일"]) else None,
-                        key=f"입금일_{contract_id}_{pid}",
-                    )
-                    if st.button(
-                        "💾 저장",
-                        key=f"save_pay_{contract_id}_{pid}",
-                        type="primary",
-                        use_container_width=True,
-                    ):
-                        ct.update_payment_fields(
-                            pid,
-                            발행일=new_발행 if new_발행 else "",
-                            금액=new_금액,
-                            고객입금액=new_고객,
-                            입금일=new_입금일 if new_입금일 else "",
-                        )
-                        st.success(f"✅ {sel_label} 저장 완료")
-                        st.rerun()
+            save_clicked = btn_cols[1].button(
+                "💾 변경사항 저장",
+                key=f"save_edit_{contract_id}",
+                type="primary",
+                use_container_width=True,
+            )
+            if save_clicked:
+                changes_count = 0
+                for idx in edited.index:
+                    orig = view.loc[idx]
+                    new = edited.loc[idx]
+                    pid = orig["payment_id"]
+                    diffs = {}
+                    for col in ("발행일", "입금일", "금액", "고객입금액"):
+                        a, b = orig[col], new[col]
+                        if pd.isna(a) and pd.isna(b):
+                            continue
+                        if pd.isna(a) != pd.isna(b) or a != b:
+                            if isinstance(b, pd.Timestamp) and pd.notna(b):
+                                diffs[col] = b.date()
+                            elif pd.isna(b):
+                                diffs[col] = ""
+                            else:
+                                diffs[col] = b
+                    if diffs:
+                        ct.update_payment_fields(pid, **diffs)
+                        changes_count += 1
+                if changes_count:
+                    st.success(f"✅ {changes_count}개 회차 변경 저장 완료")
+                    st.rerun()
+                else:
+                    st.info("변경된 내용이 없습니다.")
 
         if c.get("메모"):
             st.caption(f"📝 메모: {c['메모']}")
