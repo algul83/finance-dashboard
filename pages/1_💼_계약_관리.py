@@ -225,10 +225,16 @@ for _, c in customer_contracts.iterrows():
     with st.expander(header, expanded=False):
         # 계약 정보
         info_cols = st.columns([2, 2, 2, 2])
-        info_cols[0].markdown(f"**계약일**\n{c['계약일'].strftime('%Y-%m-%d') if pd.notna(c['계약일']) else '-'}")
-        info_cols[1].markdown(f"**서비스**\n{c['서비스명'] or '-'}")
-        info_cols[2].markdown(f"**정산유형**\n{c['정산유형'] or '미입력'}")
-        info_cols[3].markdown(f"**분납 회차**\n{int(c['분납회차']) if pd.notna(c['분납회차']) else '-'}회")
+        def _kv(label, value):
+            v = str(value) if value not in (None, "") else "—"
+            return f"<div style='font-size:0.78rem;color:#6B6A73;margin-bottom:2px'>{label}</div><div style='font-size:0.95rem;font-weight:600'>{v}</div>"
+        info_cols[0].markdown(_kv("계약일", c["계약일"].strftime("%Y-%m-%d") if pd.notna(c["계약일"]) else None), unsafe_allow_html=True)
+        info_cols[1].markdown(_kv("서비스", c["서비스명"]), unsafe_allow_html=True)
+        info_cols[2].markdown(_kv("정산유형", c["정산유형"] or "미입력"), unsafe_allow_html=True)
+        info_cols[3].markdown(
+            _kv("분납 회차", f"{int(c['분납회차'])}회" if pd.notna(c["분납회차"]) else None),
+            unsafe_allow_html=True,
+        )
 
         # 입금 진행률 바
         st.progress(min(progress / 100, 1.0), text=f"입금 진행: {paid_amount:,.0f} / {c['총금액']:,.0f}원 ({progress:.0f}%)")
