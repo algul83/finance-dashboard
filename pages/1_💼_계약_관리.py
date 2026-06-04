@@ -70,7 +70,12 @@ st.markdown(
         background: white; border: 1px solid #EDECF1;
         border-radius: 12px; padding: 16px; margin: 12px 0;
     }}
-    /* 계약 카드 펼침/접기 토글 버튼 (▼/▲) 높이 절반 */
+    /* 계약 카드 — 모든 컬럼(텍스트 + 버튼)을 한 줄 세로 가운데 정렬 */
+    div[data-testid="stVerticalBlockBorderWrapper"]
+        div[data-testid="stHorizontalBlock"] {{
+        align-items: center !important;
+    }}
+    /* 펼침/접기 토글 버튼 (▼/▲) 높이 절반 */
     div[data-testid="stVerticalBlockBorderWrapper"]
         div[data-testid="stHorizontalBlock"]
         > div[data-testid="stColumn"]:last-child
@@ -79,7 +84,6 @@ st.markdown(
         height: 26px !important;
         padding: 0 6px !important;
         line-height: 1 !important;
-        margin-top: 6px !important;
     }}
     </style>
     """,
