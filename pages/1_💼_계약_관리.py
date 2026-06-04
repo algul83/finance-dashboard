@@ -272,13 +272,6 @@ for _, c in customer_contracts.iterrows():
             unsafe_allow_html=True,
         )
 
-        # 입금 진행률 바 (실시간 — 편집 후 저장 안 했어도 미리 반영)
-        progress_placeholder = st.empty()
-        progress_placeholder.progress(
-            min(progress / 100, 1.0),
-            text=f"입금 진행: {paid_amount:,.0f} / {c['총금액']:,.0f}원 ({progress:.0f}%)",
-        )
-
         # 메타데이터 수정
         with st.popover("⚙️ 계약 메타 수정"):
             new_분납 = st.number_input(
@@ -353,15 +346,7 @@ for _, c in customer_contracts.iterrows():
                 key=f"editor_{contract_id}",
             )
 
-            # 편집된 입금일 기준으로 진행률·상태 실시간 재계산
-            live_paid = float(
-                edited.loc[edited["입금일"].notna(), "금액"].sum()
-            ) if "입금일" in edited.columns else 0
-            live_progress = (live_paid / c["총금액"] * 100) if c["총금액"] > 0 else 0
-            progress_placeholder.progress(
-                min(live_progress / 100, 1.0),
-                text=f"입금 진행: {live_paid:,.0f} / {c['총금액']:,.0f}원 ({live_progress:.0f}%)",
-            )
+            # 편집 결과 실시간 상태 미리보기 (저장 후 헤더 배지에 반영)
             status_emojis = ["✅ 입금완료" if pd.notna(d) else "⬜ 미입금" for d in edited["입금일"]]
             st.caption("상태 (실시간 미리보기): " + " · ".join(
                 f"{r}회차 {s}" for r, s in zip(edited["회차"], status_emojis)
