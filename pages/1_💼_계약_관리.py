@@ -236,8 +236,8 @@ for _, c in customer_contracts.iterrows():
         # 메타데이터 수정
         with st.popover("⚙️ 계약 메타 수정"):
             new_분납 = st.number_input(
-                "분납 회차 (분할정산일 때 2 또는 3)",
-                min_value=0, max_value=12,
+                "분납 회차 (분할정산: 2 또는 3, 월납: 12 등) — 입력 시 부족한 회차가 자동 생성됩니다",
+                min_value=0, max_value=24,
                 value=int(c["분납회차"]) if pd.notna(c["분납회차"]) else 0,
                 key=f"분납_{contract_id}",
             )
@@ -260,42 +260,91 @@ for _, c in customer_contracts.iterrows():
                     구독종료일=new_구독종료,
                     메모=new_메모,
                 )
-                st.success("저장 완료")
+                # 회차 입력 시 부족한 회차 자동 생성
+                if new_분납 > 0:
+                    added = ct.ensure_payment_rows(contract_id, new_분납, c["총금액"])
+                    if added > 0:
+                        st.success(f"✅ 메타 저장 + 회차 {added}개 자동 생성")
+                    else:
+                        st.success("✅ 메타 저장 (회차는 이미 충분히 있음)")
+                else:
+                    st.success("✅ 저장 완료")
                 st.rerun()
 
-        # 결제 회차
-        st.markdown("**💳 결제 회차**")
+        # 결제 회차 — 인라인 편집 가능
+        st.markdown("**💳 결제 회차** (발행일·입금일·메모 직접 수정 → 아래 '변경사항 저장' 클릭)")
         if contract_payments.empty:
-            st.caption("등록된 결제 회차가 없습니다. 아래에서 추가하세요.")
+            st.caption("등록된 결제 회차가 없습니다. ⚙️ 계약 메타에서 분납 회차를 입력하거나 ➕ 회차 추가로 등록하세요.")
         else:
-            view = contract_payments[[
-                "payment_id", "회차", "청구예정일", "발행일", "금액", "입금완료", "입금일", "메모",
+            # 인라인 편집용 view 구성
+            view = contract_payments.sort_values("회차")[[
+                "payment_id", "회차", "청구예정일", "발행일", "금액", "입금일", "메모",
             ]].copy()
-            view["청구예정일"] = view["청구예정일"].dt.strftime("%Y-%m-%d").fillna("-")
-            view["발행일"] = view["발행일"].dt.strftime("%Y-%m-%d").fillna("-")
-            view["입금일"] = view["입금일"].dt.strftime("%Y-%m-%d").fillna("-")
-            view["금액"] = view["금액"].apply(lambda v: f"{v:,.0f}원")
-            view["상태"] = view["입금완료"].apply(lambda b: "✅ 입금완료" if b else "⬜ 미입금")
-            display = view.drop(columns=["payment_id", "입금완료"])
-            st.dataframe(display, hide_index=True, use_container_width=True)
+            view = view.reset_index(drop=True)
+            # 날짜 컬럼은 datetime/None 형태 유지 (DateColumn 호환)
+            for col in ("청구예정일", "발행일", "입금일"):
+                view[col] = pd.to_datetime(view[col], errors="coerce")
+            view["금액"] = view["금액"].astype(float)
 
-            # 입금 토글
-            unpaid = contract_payments[~contract_payments["입금완료"]]
-            if not unpaid.empty:
-                with st.popover("✅ 입금완료 처리"):
-                    for _, p in unpaid.iterrows():
-                        label = f"{p['회차']}회차 — {p['금액']:,.0f}원"
-                        col_a, col_b = st.columns([3, 2])
-                        col_a.write(label)
-                        if col_b.button("입금 완료", key=f"paid_{p['payment_id']}"):
-                            ct.update_payment_paid(p["payment_id"], True, date.today())
-                            st.success(f"{label} 처리됨")
-                            st.rerun()
+            edited = st.data_editor(
+                view,
+                column_config={
+                    "payment_id": None,  # 숨김
+                    "회차": st.column_config.TextColumn("회차", disabled=True, width="small"),
+                    "청구예정일": st.column_config.DateColumn("청구예정일", format="YYYY-MM-DD"),
+                    "발행일": st.column_config.DateColumn("발행일", format="YYYY-MM-DD"),
+                    "금액": st.column_config.NumberColumn("금액 (원)", format="%d"),
+                    "입금일": st.column_config.DateColumn(
+                        "입금일",
+                        format="YYYY-MM-DD",
+                        help="날짜를 입력하면 자동으로 입금완료(✅) 처리됩니다",
+                    ),
+                    "메모": st.column_config.TextColumn("메모"),
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="fixed",
+                key=f"editor_{contract_id}",
+            )
 
-        # 결제 회차 추가
-        with st.popover("➕ 결제 회차 추가"):
+            # 상태 표시 (편집된 입금일 기준으로 실시간 미리보기)
+            status_emojis = ["✅ 입금완료" if pd.notna(d) else "⬜ 미입금" for d in edited["입금일"]]
+            st.caption("상태 (실시간 미리보기): " + " · ".join(
+                f"{r}회차 {s}" for r, s in zip(edited["회차"], status_emojis)
+            ))
+
+            if st.button("💾 변경사항 저장", key=f"save_edit_{contract_id}", type="primary"):
+                changes_count = 0
+                for idx in edited.index:
+                    orig = view.loc[idx]
+                    new = edited.loc[idx]
+                    pid = orig["payment_id"]
+                    diffs = {}
+                    for col in ("청구예정일", "발행일", "입금일", "메모", "금액"):
+                        a, b = orig[col], new[col]
+                        # NaN/None 비교
+                        if pd.isna(a) and pd.isna(b):
+                            continue
+                        if pd.isna(a) != pd.isna(b) or a != b:
+                            if isinstance(b, pd.Timestamp) and pd.notna(b):
+                                diffs[col] = b.date()
+                            elif pd.isna(b):
+                                diffs[col] = ""
+                            else:
+                                diffs[col] = b
+                    if diffs:
+                        ct.update_payment_fields(pid, **diffs)
+                        changes_count += 1
+                if changes_count:
+                    st.success(f"✅ {changes_count}개 회차 변경 저장 완료")
+                    st.rerun()
+                else:
+                    st.info("변경된 내용이 없습니다.")
+
+        # 결제 회차 수동 추가 (분납 자동 생성 외 추가 회차)
+        with st.popover("➕ 회차 수동 추가 (월납 등)"):
             with st.form(f"add_payment_{contract_id}"):
-                new_회차 = st.text_input("회차 (예: 2, 3, 또는 2026-07)", key=f"new_round_{contract_id}")
+                new_회차 = st.text_input("회차 (예: 4, 또는 2026-07)", key=f"new_round_{contract_id}")
                 new_청구 = st.date_input("청구 예정일", value=None, key=f"new_due_{contract_id}")
                 new_발행 = st.date_input("발행일 (있으면)", value=None, key=f"new_issue_{contract_id}")
                 new_금액 = st.number_input("금액 (원)", min_value=0, step=10000, key=f"new_amt_{contract_id}")

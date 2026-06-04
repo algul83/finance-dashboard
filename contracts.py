@@ -191,7 +191,7 @@ def add_payment(contract_id: str, 회차, 청구예정일, 발행일, 금액, �
 def update_payment_paid(payment_id: str, paid: bool, 입금일=None) -> None:
     """결제 회차 입금완료 토글."""
     ws = get_worksheet("Payments")
-    records = ws.get_all_records()
+    records = ws.get_all_records(expected_headers=PAYMENT_COLUMNS)
     for i, r in enumerate(records):
         if r["payment_id"] == payment_id:
             row_idx = i + 2  # 1-indexed + header
@@ -205,6 +205,77 @@ def update_payment_paid(payment_id: str, paid: bool, 입금일=None) -> None:
             invalidate_cache()
             return
     raise ValueError(f"payment_id {payment_id} 못 찾음")
+
+
+def update_payment_fields(payment_id: str, **fields) -> None:
+    """결제 회차 여러 필드 일괄 수정.
+    `입금일`이 들어가면 자동으로 `입금완료=TRUE`, 비워지면 `입금완료=FALSE`로 변경.
+    """
+    if "입금일" in fields:
+        v = fields["입금일"]
+        has_date = v not in (None, "", pd.NaT) and not (hasattr(v, "__class__") and pd.isna(v))
+        fields["입금완료"] = "TRUE" if has_date else "FALSE"
+
+    ws = get_worksheet("Payments")
+    records = ws.get_all_records(expected_headers=PAYMENT_COLUMNS)
+    for i, r in enumerate(records):
+        if r["payment_id"] == payment_id:
+            row_idx = i + 2
+            for k, v in fields.items():
+                if k not in PAYMENT_COLUMNS:
+                    continue
+                col_idx = PAYMENT_COLUMNS.index(k) + 1
+                if v in (None, "", pd.NaT) or (hasattr(v, "__class__") and pd.isna(v)):
+                    val = ""
+                elif hasattr(v, "strftime"):
+                    val = v.strftime("%Y-%m-%d")
+                else:
+                    val = str(v)
+                ws.update_cell(row_idx, col_idx, val)
+            invalidate_cache()
+            return
+    raise ValueError(f"payment_id {payment_id} 못 찾음")
+
+
+def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float) -> int:
+    """분납 회차가 target_count개 다 있도록 부족분 자동 생성.
+    예: target_count=3이면 1·2·3 회차 row 보장. 이미 1회차만 있으면 2·3 추가.
+    금액은 총금액/회차로 균등 분할 (수동 조정 가능).
+
+    Returns: 추가된 row 수.
+    """
+    payments = load_payments()
+    existing = payments[payments["contract_id"] == contract_id]
+    existing_rounds = set(existing["회차"].astype(str)) if not existing.empty else set()
+
+    per_amount = float(total_amount or 0) / target_count if target_count > 0 else 0
+    now = pd.Timestamp.now()
+    new_rows = []
+    for i in range(1, target_count + 1):
+        if str(i) in existing_rounds:
+            continue
+        pid = f"P{int(time.time() * 1000)}{len(new_rows):03d}"
+        new_rows.append({
+            "payment_id": pid,
+            "contract_id": contract_id,
+            "회차": str(i),
+            "청구예정일": "",
+            "발행일": "",
+            "입금완료": "FALSE",
+            "입금일": "",
+            "금액": per_amount,
+            "메모": f"분납 {target_count}회차 자동 생성",
+            "created_at": now.strftime("%Y-%m-%d %H:%M"),
+        })
+
+    if new_rows:
+        ws = get_worksheet("Payments")
+        ws.append_rows(
+            [[r.get(c, "") for c in PAYMENT_COLUMNS] for r in new_rows],
+            value_input_option="USER_ENTERED",
+        )
+        invalidate_cache()
+    return len(new_rows)
 
 
 def update_contract_meta(contract_id: str, **fields) -> None:
