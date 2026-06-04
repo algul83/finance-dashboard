@@ -105,6 +105,16 @@ def invalidate_cache():
     load_payments.clear()
 
 
+def is_overseas(service_name) -> bool:
+    """서비스명이 해외 대조약 케이스인지 판정.
+    해외대조약은 고객 실입금액이 발행액과 다를 수 있어 (관세·부가세 등)
+    수기 입력이 필요. 그 외는 발행액 = 입금액으로 자동 채움.
+    """
+    if service_name is None or (isinstance(service_name, float) and pd.isna(service_name)):
+        return False
+    return "해외대조약" in str(service_name)
+
+
 def _parse_분납회차(value) -> int:
     """Notion select 값('1회'/'3회'/'12회') 또는 숫자 → int. 없으면 0."""
     if value in (None, "", 0):
@@ -169,6 +179,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                 n["세금계산서발행일"].strftime("%Y-%m-%d")
                 if pd.notna(n.get("세금계산서발행일")) else ""
             ),
+            "해외": is_overseas(contract_row["서비스명"]),
             # 입금완료/입금일은 Notion과 연결 안 함 — Streamlit에서 직접 관리
         }
 
@@ -200,7 +211,8 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                     "입금완료": "FALSE",
                     "입금일": "",
                     "금액": per_amount,
-                    "고객입금액": per_amount,  # 기본값: 발행액과 동일 (필요 시 표에서 직접 수정)
+                    # 해외대조약: 공란(수기 입력) / 그 외: 발행액과 동일
+                    "고객입금액": "" if plan["해외"] else per_amount,
                     "메모": "Notion 동기화 자동 생성" if is_first else f"{n_rounds}회 분납 자동 생성",
                     "created_at": now.strftime("%Y-%m-%d %H:%M"),
                 })
@@ -429,12 +441,14 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
         existing = payments[payments["contract_id"] == cid] if not payments.empty else pd.DataFrame()
         existing_rounds = set(existing["회차"].astype(str)) if not existing.empty else set()
         per_amount = float(c["총금액"] or 0) / notion_분납 if notion_분납 > 0 else 0
+        overseas = is_overseas(c.get("서비스명"))
+        cust_paid = "" if overseas else per_amount
         for i in range(1, notion_분납 + 1):
             if str(i) in existing_rounds:
                 continue
             pid = f"P{int(time.time() * 1000)}{len(payments_to_add):03d}"
             payments_to_add.append([
-                pid, cid, str(i), "", "", "FALSE", "", per_amount, per_amount,
+                pid, cid, str(i), "", "", "FALSE", "", per_amount, cust_paid,
                 f"분납 {notion_분납}회차 자동 생성",
                 now.strftime("%Y-%m-%d %H:%M"),
             ])
@@ -455,6 +469,7 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
     """분납 회차가 target_count개 다 있도록 부족분 자동 생성.
     예: target_count=3이면 1·2·3 회차 row 보장. 이미 1회차만 있으면 2·3 추가.
     금액은 총금액/회차로 균등 분할 (수동 조정 가능).
+    해외대조약은 고객입금액 공란(수기 입력), 그 외는 발행액과 동일.
 
     Returns: 추가된 row 수.
     """
@@ -462,7 +477,16 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
     existing = payments[payments["contract_id"] == contract_id]
     existing_rounds = set(existing["회차"].astype(str)) if not existing.empty else set()
 
+    # 계약의 서비스명 조회 → 해외대조약 여부 판정
+    contracts = load_contracts()
+    contract_row = contracts[contracts["contract_id"] == contract_id]
+    overseas = (
+        is_overseas(contract_row.iloc[0]["서비스명"])
+        if not contract_row.empty else False
+    )
+
     per_amount = float(total_amount or 0) / target_count if target_count > 0 else 0
+    cust_paid = "" if overseas else per_amount
     now = pd.Timestamp.now()
     new_rows = []
     for i in range(1, target_count + 1):
@@ -478,7 +502,7 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
             "입금완료": "FALSE",
             "입금일": "",
             "금액": per_amount,
-            "고객입금액": per_amount,
+            "고객입금액": cust_paid,
             "메모": f"분납 {target_count}회차 자동 생성",
             "created_at": now.strftime("%Y-%m-%d %H:%M"),
         })

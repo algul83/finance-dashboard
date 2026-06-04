@@ -418,7 +418,12 @@ for _, c in customer_contracts.iterrows():
                 view[col] = pd.to_datetime(view[col], errors="coerce")
             view["금액"] = view["금액"].astype(float).round().astype("Int64")
             view["고객입금액"] = view["고객입금액"].astype(float).round().astype("Int64")
-            view.loc[view["고객입금액"] == 0, "고객입금액"] = view.loc[view["고객입금액"] == 0, "금액"]
+            # 해외대조약은 고객입금액 공란 유지 (수기 입력)
+            # 그 외 서비스만 0 → 금액 fallback (기존 0 데이터 호환)
+            if not ct.is_overseas(c.get("서비스명")):
+                view.loc[view["고객입금액"] == 0, "고객입금액"] = view.loc[view["고객입금액"] == 0, "금액"]
+            else:
+                view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
 
             edited = st.data_editor(
                 view,
