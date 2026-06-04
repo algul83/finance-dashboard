@@ -275,7 +275,6 @@ c4.markdown(
 )
 
 # ============== 계약 검색 ==============
-st.markdown("## 🔍 계약 검색")
 search_query = st.text_input(
     "고객명 또는 계약명 키워드",
     value="",
@@ -315,8 +314,6 @@ if search_query:
 
 if search_query and customer_contracts.empty:
     st.warning(f"'{search_query}'과(와) 일치하는 계약이 없습니다.")
-
-st.markdown(f"### 📋 계약 목록 ({len(customer_contracts)}건)")
 
 # ============== 계약 카드 렌더링 ==============
 for _, c in customer_contracts.iterrows():
