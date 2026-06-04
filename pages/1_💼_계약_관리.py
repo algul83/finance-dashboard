@@ -109,11 +109,37 @@ try:
     contracts_df = ct.load_contracts()
     payments_df = ct.load_payments()
 except Exception as e:
-    st.error(f"Google Sheets 연결 실패: {e}")
-    st.info(
-        "**셋업 안내**: Streamlit Cloud Secrets에 `gcp_service_account` 블록과 "
-        "`CONTRACTS_SHEET_ID`가 입력돼있어야 합니다. README 참고."
-    )
+    import traceback
+    st.error(f"Google Sheets 연결 실패: {type(e).__name__}: {e!r}")
+    st.code(traceback.format_exc(), language="python")
+
+    # 디버그: secrets 상태 확인
+    with st.expander("🔧 디버그 정보", expanded=True):
+        try:
+            secret_keys = list(st.secrets.keys())
+            st.write("**secrets 최상위 키:**", secret_keys)
+            if "CONTRACTS_SHEET_ID" in st.secrets:
+                sid = st.secrets["CONTRACTS_SHEET_ID"]
+                st.write(f"**CONTRACTS_SHEET_ID**: `{sid[:8]}...{sid[-4:]}` (길이 {len(sid)})")
+            else:
+                st.warning("CONTRACTS_SHEET_ID 없음")
+            if "gcp_service_account" in st.secrets:
+                sa = dict(st.secrets["gcp_service_account"])
+                st.write("**gcp_service_account 키:**", list(sa.keys()))
+                if "private_key" in sa:
+                    pk = sa["private_key"]
+                    st.write(
+                        f"**private_key 길이**: {len(pk)}자, "
+                        f"**시작**: `{pk[:30]}`, "
+                        f"**\\n 포함**: {'\\n' in pk}, "
+                        f"**실제 줄바꿈 포함**: {chr(10) in pk}"
+                    )
+                if "client_email" in sa:
+                    st.write(f"**client_email**: {sa['client_email']}")
+            else:
+                st.warning("gcp_service_account 블록 없음")
+        except Exception as e2:
+            st.error(f"디버그 정보 수집 실패: {e2}")
     st.stop()
 
 if contracts_df.empty:
