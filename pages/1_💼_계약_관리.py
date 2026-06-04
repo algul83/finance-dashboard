@@ -238,76 +238,19 @@ if selected_customer != "(전체)":
 
 st.markdown(f"### 📋 계약 목록 ({len(customer_contracts)}건)")
 
-# ============== 요약 표 (정렬·필터 가능, 행 선택 → 상세) ==============
-summary_rows = []
-contract_id_order = []
+# ============== 계약 카드 렌더링 ==============
 for _, c in customer_contracts.iterrows():
-    cid = c["contract_id"]
-    pays = payments_df[payments_df["contract_id"] == cid] if not payments_df.empty else pd.DataFrame()
-    paid = float(pays[pays["입금완료"]]["금액"].sum()) if not pays.empty else 0
-    total = float(c["총금액"] or 0)
-    pct = (paid / total * 100) if total > 0 else 0
-    summary_rows.append({
-        "고객": c["고객기관"] or "—",
-        "건명": c["건명"] or "—",
-        "금액": total,
-        "구분": c["신규갱신"] or "—",
-        "정산유형": c["정산유형"] or "미입력",
-        "분납": int(c["분납회차"]) if pd.notna(c["분납회차"]) and c["분납회차"] != "" else 0,
-        "입금%": pct,
-    })
-    contract_id_order.append(cid)
-
-summary_df = pd.DataFrame(summary_rows)
-table_event = st.dataframe(
-    summary_df,
-    selection_mode="single-row",
-    on_select="rerun",
-    use_container_width=True,
-    hide_index=True,
-    height=min(420, 48 + 36 * len(summary_df)),
-    column_config={
-        "고객": st.column_config.TextColumn("고객", width="medium"),
-        "건명": st.column_config.TextColumn("건명", width="large"),
-        "금액": st.column_config.NumberColumn("금액", format="accounting", width="small"),
-        "구분": st.column_config.TextColumn("구분", width="small"),
-        "정산유형": st.column_config.TextColumn("정산유형", width="small"),
-        "분납": st.column_config.NumberColumn("분납", format="%d회", width="small"),
-        "입금%": st.column_config.ProgressColumn(
-            "입금률",
-            min_value=0, max_value=100,
-            format="%.0f%%",
-            width="medium",
-        ),
-    },
-    key="contracts_summary_table",
-)
-
-selected_rows = table_event.selection.rows if hasattr(table_event, "selection") else []
-if not selected_rows:
-    st.info("👆 위 표에서 계약을 클릭하면 상세 (메타 수정·결제 회차) 가 표시됩니다.")
-    st.stop()
-
-selected_cid = contract_id_order[selected_rows[0]]
-selected_row = customer_contracts[customer_contracts["contract_id"] == selected_cid].iloc[0]
-st.markdown("---")
-
-# ============== 선택된 계약 상세 ==============
-for c in [selected_row]:  # 기존 로직 재활용 (들여쓰기 유지)
     contract_id = c["contract_id"]
     contract_payments = payments_df[payments_df["contract_id"] == contract_id] if not payments_df.empty else pd.DataFrame()
     paid_amount = contract_payments[contract_payments["입금완료"]]["금액"].sum() if not contract_payments.empty else 0
     progress = (paid_amount / c["총금액"] * 100) if c["총금액"] > 0 else 0
 
-    st.markdown(
-        f'<div style="background:{PRIMARY_LIGHT};padding:14px 18px;border-radius:10px;margin-bottom:12px">'
-        f'<div style="font-size:1.15rem;font-weight:800;color:{PRIMARY_DARK}">📄 {c["건명"]}</div>'
-        f'<div style="color:#6B6A73;margin-top:4px">'
-        f'{c["고객기관"] or "—"} · {c["총금액"]:,.0f}원 · {c["신규갱신"] or "—"} / {c["정산유형"] or "미입력"}'
-        f'</div></div>',
-        unsafe_allow_html=True,
+    header = (
+        f"📄 **{c['건명']}** · {c['고객기관']} · "
+        f"{c['총금액']:,.0f}원 · {c['신규갱신']} / {c['정산유형'] or '미입력'} · "
+        f"입금 {progress:.0f}%"
     )
-    if True:  # 기존 with 블록 대체용 (들여쓰기 유지)
+    with st.expander(header, expanded=False):
         # 계약 정보
         info_cols = st.columns([2, 2, 2, 2])
         def _kv(label, value):
