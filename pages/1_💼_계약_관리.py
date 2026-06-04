@@ -138,18 +138,6 @@ st.markdown(
         border-color: {PRIMARY_DARK} !important;
         color: {PRIMARY_DARK} !important;
     }}
-    /* 결제 회차 data_editor — 헤더 연보라 (glide-data-grid CSS 변수) */
-    div[data-testid="stDataFrame"],
-    div[data-testid="stDataEditor"],
-    div[data-testid="stDataFrameResizable"] {{
-        --gdg-bg-header: {PRIMARY_LIGHT} !important;
-        --gdg-bg-header-has-focus: #E1D5F7 !important;
-        --gdg-bg-header-hovered: #E5DAF9 !important;
-        --gdg-header-bottom-border-color: #D6C9F2 !important;
-        --gdg-text-header: {PRIMARY_DARK} !important;
-        --gdg-text-header-selected: {PRIMARY_DARK} !important;
-        --gdg-horizontal-border-color: #ECEAF3 !important;
-    }}
     </style>
     """,
     unsafe_allow_html=True,
