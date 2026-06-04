@@ -42,10 +42,24 @@ PAYMENT_COLUMNS = [
 ]
 
 
+def _ensure_headers(ws, expected_headers: list[str]) -> None:
+    """1행 헤더 자동 셋업. 비어있거나 첫 컬럼이 다르면 expected_headers로 덮어씀."""
+    try:
+        row1 = ws.row_values(1)
+    except Exception:
+        row1 = []
+    # 첫 컬럼이 expected[0]과 일치하면 정상으로 간주
+    if row1 and row1[0] == expected_headers[0]:
+        return
+    # 비었거나 첫 컬럼이 다르면 헤더 작성 (기존 데이터가 있으면 행을 밀어내지 않고 1행만 덮어씀)
+    ws.update("A1", [expected_headers], value_input_option="USER_ENTERED")
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def load_contracts() -> pd.DataFrame:
     ws = get_worksheet("Contracts")
-    data = ws.get_all_records()
+    _ensure_headers(ws, CONTRACT_COLUMNS)
+    data = ws.get_all_records(expected_headers=CONTRACT_COLUMNS)
     if not data:
         return pd.DataFrame(columns=CONTRACT_COLUMNS)
     df = pd.DataFrame(data)
@@ -60,7 +74,8 @@ def load_contracts() -> pd.DataFrame:
 @st.cache_data(ttl=60, show_spinner=False)
 def load_payments() -> pd.DataFrame:
     ws = get_worksheet("Payments")
-    data = ws.get_all_records()
+    _ensure_headers(ws, PAYMENT_COLUMNS)
+    data = ws.get_all_records(expected_headers=PAYMENT_COLUMNS)
     if not data:
         return pd.DataFrame(columns=PAYMENT_COLUMNS)
     df = pd.DataFrame(data)
