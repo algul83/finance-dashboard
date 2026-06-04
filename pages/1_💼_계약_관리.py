@@ -114,6 +114,20 @@ if st.sidebar.button("🔁 기존 계약 분납회차 일괄 갱신", use_contai
         except Exception as e:
             st.sidebar.error(f"갱신 실패: {e}")
 
+if st.sidebar.button("📝 기존 계약 메타 일괄 갱신", use_container_width=True,
+                      help="Notion에서 고객기관·건명·서비스명·신규갱신·정산유형·계약일·총금액 변경된 건들을 Sheets에 반영합니다."):
+    with st.spinner("메타 갱신 중..."):
+        try:
+            notion_df = load_sales_data()
+            n = ct.resync_meta_from_notion(notion_df)
+            if n > 0:
+                st.sidebar.success(f"✅ {n}건 메타 갱신")
+            else:
+                st.sidebar.info("갱신할 항목 없음 (모두 최신)")
+            st.cache_data.clear()
+        except Exception as e:
+            st.sidebar.error(f"갱신 실패: {e}")
+
 if st.sidebar.button("♻️ 캐시 새로고침", use_container_width=True):
     ct.invalidate_cache()
     st.rerun()

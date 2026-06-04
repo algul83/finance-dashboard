@@ -271,6 +271,89 @@ def update_payment_fields(payment_id: str, **fields) -> None:
     raise ValueError(f"payment_id {payment_id} 못 찾음")
 
 
+def resync_meta_from_notion(notion_df: pd.DataFrame) -> int:
+    """기존 Sheets 계약의 메타 필드를 Notion 최신 값으로 batch 갱신.
+    대상: 고객기관·건명·서비스명·신규갱신·정산유형·계약일·총금액
+    (분납회차는 resync_installments_from_notion에서 별도 처리)
+
+    Returns: 1개 이상 필드가 갱신된 계약 수
+    """
+    contracts = load_contracts()
+    if contracts.empty:
+        return 0
+    notion_by_id = {str(r["id"]): r for _, r in notion_df.iterrows()}
+    now = pd.Timestamp.now()
+
+    ws_c = get_worksheet("Contracts")
+    contract_records = ws_c.get_all_records(expected_headers=CONTRACT_COLUMNS)
+    cid_to_row = {r["contract_id"]: i + 2 for i, r in enumerate(contract_records)}
+
+    from gspread.utils import rowcol_to_a1
+
+    # sheet 컬럼 → (notion 필드 키, 변환 함수)
+    SYNC_FIELDS = {
+        "고객기관": ("고객기관", lambda v: (v or "").strip()),
+        "건명": ("name", lambda v: (v or "").strip()),
+        "서비스명": ("서비스명", lambda v: ", ".join(v) if v else ""),
+        "신규갱신": ("신규갱신", lambda v: v or ""),
+        "정산유형": ("정산유형", lambda v: v or ""),
+        "계약일": ("계약일", lambda v: v.strftime("%Y-%m-%d") if pd.notna(v) else ""),
+        "총금액": ("총매출", lambda v: float(v or 0)),
+    }
+
+    batch = []
+    updated = 0
+
+    for _, c in contracts.iterrows():
+        nid = str(c["notion_id"])
+        if nid not in notion_by_id:
+            continue
+        n = notion_by_id[nid]
+        cid = c["contract_id"]
+        if cid not in cid_to_row:
+            continue
+        row_idx = cid_to_row[cid]
+
+        changed = False
+        for sheet_col, (notion_key, transform) in SYNC_FIELDS.items():
+            new_val = transform(n.get(notion_key))
+            old_val = c.get(sheet_col)
+
+            # 숫자(총금액) 비교
+            if sheet_col == "총금액":
+                old_num = float(old_val) if pd.notna(old_val) and old_val != "" else 0
+                new_num = float(new_val)
+                if abs(old_num - new_num) < 0.01:
+                    continue
+                batch.append({
+                    "range": rowcol_to_a1(row_idx, CONTRACT_COLUMNS.index(sheet_col) + 1),
+                    "values": [[new_num]],
+                })
+                changed = True
+            else:
+                old_str = "" if pd.isna(old_val) or old_val in (None,) else str(old_val).strip()
+                new_str = str(new_val).strip()
+                if old_str == new_str:
+                    continue
+                batch.append({
+                    "range": rowcol_to_a1(row_idx, CONTRACT_COLUMNS.index(sheet_col) + 1),
+                    "values": [[new_str]],
+                })
+                changed = True
+
+        if changed:
+            updated += 1
+            batch.append({
+                "range": rowcol_to_a1(row_idx, CONTRACT_COLUMNS.index("updated_at") + 1),
+                "values": [[now.strftime("%Y-%m-%d %H:%M")]],
+            })
+
+    if batch:
+        ws_c.batch_update(batch, value_input_option="USER_ENTERED")
+        invalidate_cache()
+    return updated
+
+
 def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
     """기존 Sheets 계약들 중 Notion `분납회차` 값과 다른 건 batch로 일괄 갱신.
     API 호출을 최소화: contracts/payments 각 1번 읽고, 변경분은 batch_update로.
