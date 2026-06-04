@@ -272,6 +272,17 @@ confirmed = fdf[fdf["상태"].isin(confirmed_states)]
 potential = fdf[fdf["상태"].isin(potential_states)]
 unpaid = fdf[(fdf["세금계산서발행일"].notna()) & (~fdf["입금완료"])]
 
+# 계약일은 지났는데 세금계산서 미발행 — 발행 누락 후보
+_today = pd.Timestamp.today().normalize()
+overdue_issue = fdf[
+    (fdf["계약일"].notna())
+    & (fdf["계약일"] <= _today)
+    & (fdf["세금계산서발행일"].isna())
+    & (fdf["상태"].isin(confirmed_states))
+].copy()
+if not overdue_issue.empty:
+    overdue_issue["경과일"] = (_today - overdue_issue["계약일"]).dt.days
+
 # ============== 핵심 KPI ==============
 st.markdown("## ⭐ 핵심 지표")
 st.markdown('<div class="sec-meta">필터·기간 조건 적용 결과</div>', unsafe_allow_html=True)
@@ -341,6 +352,16 @@ if not unpaid.empty and unpaid["총매출"].sum() > 0:
             "warn": False,
         })
 
+if not overdue_issue.empty:
+    over_n = len(overdue_issue)
+    over_amount = float(overdue_issue["총매출"].sum())
+    max_overdue = int(overdue_issue["경과일"].max())
+    top_alerts.append({
+        "title": "세금계산서 발행 누락",
+        "body": f"<b>{over_n}건</b> ({over_amount/1e8:.2f}억) · 최장 {max_overdue}일 경과",
+        "warn": False,
+    })
+
 not_filled_n = int(confirmed["정산유형"].isna().sum())
 not_filled_amount = float(confirmed.loc[confirmed["정산유형"].isna(), "총매출"].sum())
 if not_filled_n > 0:
@@ -409,7 +430,42 @@ else:
         use_container_width=True,
     )
 
-# ============== 월별 매출 ==============
+# ============== 발행 누락 (계약일 경과 / 발행 X) ==============
+st.markdown("## 📝 세금계산서 발행 누락")
+st.markdown(
+    '<div class="sec-meta">계약일 경과 · 발행 미완료 (확정 건 한정) — 경과일 내림차순</div>',
+    unsafe_allow_html=True,
+)
+
+if overdue_issue.empty:
+    st.success("발행 누락 없음. ✅")
+else:
+    over_view = overdue_issue[[
+        "계약일", "경과일", "고객기관", "name", "총매출", "상태", "url",
+    ]].copy()
+    over_view.columns = ["계약일", "경과일", "고객기관", "건명", "금액", "상태", "Notion"]
+    over_view = over_view.sort_values("경과일", ascending=False).reset_index(drop=True)
+    st.dataframe(
+        over_view,
+        column_config={
+            "계약일": st.column_config.DateColumn("계약일", format="YYYY-MM-DD"),
+            "경과일": st.column_config.NumberColumn("경과일", format="%d일"),
+            "고객기관": st.column_config.TextColumn("고객기관"),
+            "건명": st.column_config.TextColumn("건명"),
+            "금액": st.column_config.NumberColumn("금액 (원)", format="localized"),
+            "상태": st.column_config.TextColumn("상태"),
+            "Notion": st.column_config.LinkColumn("Notion", display_text="열기"),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
+    total_overdue_amount = overdue_issue["총매출"].sum()
+    st.caption(
+        f"누락 합계: **{total_overdue_amount:,.0f}원** ({total_overdue_amount/1e8:.2f}억) · "
+        f"{len(overdue_issue)}건"
+    )
+
+# ============== 월별 매출 추이 ==============
 st.markdown("## 📅 월별 매출 추이")
 st.markdown(
     '<div class="sec-meta">세금계산서 발행 기준 — 월별 누계</div>',
@@ -668,6 +724,15 @@ if not issued.empty and issued["지연일"].std() > 20:
     insights.append({
         "title": "발행 정책 일관성",
         "body": f"계약→발행 지연 표준편차 {issued['지연일'].std():.0f}일 — 선/후 발행 정책 정립 필요.",
+    })
+
+if not overdue_issue.empty:
+    insights.append({
+        "title": "세금계산서 발행 누락",
+        "body": (
+            f"확정 {len(overdue_issue)}건 ({overdue_issue['총매출'].sum()/1e8:.2f}억)이 "
+            f"계약일 경과 후 미발행 — 최장 {int(overdue_issue['경과일'].max())}일."
+        ),
     })
 
 if not_filled_n > 0:
