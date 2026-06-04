@@ -1,4 +1,9 @@
-"""원스글로벌 회계 관리 — 미수금 · 세금계산서 발행 누락."""
+"""원스글로벌 회계 관리 — 미수금 · 세금계산서 발행 누락.
+
+데이터 소스: Google Sheets (계약 관리 페이지와 동일)
+계약 관리에서 회차 수정 시 contracts.invalidate_cache()가 호출되어
+이 페이지에서도 즉시 최신 값이 반영됨.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -6,7 +11,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from data_loader import load_sales_data
+import contracts as ct
 
 # ============== Palette ==============
 PRIMARY = "#5B43C9"
@@ -121,24 +126,40 @@ st.markdown(
     f'<div class="top-tag">Onesglobal Internal</div>'
     f'<div style="flex:1;"></div>'
     f'<div style="color:rgba(255,255,255,0.85);font-size:0.85rem;">'
-    f'미수금 · 발행 누락 추적'
+    f'미수금 · 발행 누락 · 계약 관리와 실시간 연동'
     f'</div>'
     f'</div>',
     unsafe_allow_html=True,
 )
 
-# ============== 데이터 로드 ==============
+# ============== 데이터 로드 (계약 관리와 동일 소스) ==============
 try:
-    df = load_sales_data()
+    contracts_df = ct.load_contracts()
+    payments_df = ct.load_payments()
 except Exception as e:
-    st.error(f"데이터 로드 실패: {e}")
+    st.error(f"Google Sheets 데이터 로드 실패: {e}")
     st.stop()
 
-if df.empty:
-    st.warning("DB에 데이터가 없습니다.")
+if contracts_df.empty:
+    st.warning(
+        "📭 계약 데이터가 없습니다. 좌측 사이드바 **계약 관리** 메뉴에서 "
+        "노션 영업현황을 동기화하세요."
+    )
     st.stop()
 
-# ============== 사이드바 (검색 + 새로고침) ==============
+# 결제 회차 + 계약 메타 조인 (per-payment 뷰)
+if not payments_df.empty:
+    pay = payments_df.merge(
+        contracts_df[["contract_id", "고객기관", "건명", "계약일", "분납회차"]],
+        on="contract_id",
+        how="left",
+    )
+else:
+    pay = pd.DataFrame(
+        columns=list(payments_df.columns) + ["고객기관", "건명", "계약일", "분납회차"]
+    )
+
+# ============== 사이드바 ==============
 st.sidebar.header("🔧 검색")
 search_query = st.sidebar.text_input(
     "고객명 / 건명 키워드",
@@ -148,19 +169,21 @@ search_query = st.sidebar.text_input(
 ).strip()
 
 st.sidebar.divider()
-st.sidebar.caption(f"전체 {len(df)}건 / 캐시 10분")
+st.sidebar.caption(
+    f"계약 {len(contracts_df)}건 · 결제 회차 {len(payments_df)}건 / 캐시 60초"
+)
 if st.sidebar.button("🔄 캐시 새로고침"):
-    st.cache_data.clear()
+    ct.invalidate_cache()
     st.rerun()
 
 
 def _apply_search(d: pd.DataFrame) -> pd.DataFrame:
-    if not search_query:
+    if not search_query or d.empty:
         return d
     q = search_query.lower()
 
     def _hit(row):
-        for col in ("고객기관", "name"):
+        for col in ("고객기관", "건명"):
             v = row.get(col, "")
             if v and q in str(v).lower():
                 return True
@@ -171,24 +194,36 @@ def _apply_search(d: pd.DataFrame) -> pd.DataFrame:
 
 # ============== 집계 ==============
 _today = pd.Timestamp.today().normalize()
-confirmed_states = ("성공", "입금완료", "정산완료")
 
-unpaid_all = df[(df["세금계산서발행일"].notna()) & (~df["입금완료"])]
-overdue_all = df[
-    (df["계약일"].notna())
-    & (df["계약일"] <= _today)
-    & (df["세금계산서발행일"].isna())
-    & (df["상태"].isin(confirmed_states))
-].copy()
-if not overdue_all.empty:
-    overdue_all["경과일"] = (_today - overdue_all["계약일"]).dt.days
+# 미수금: 세금계산서 발행 O / 입금 X
+if not pay.empty:
+    unpaid_all = pay[(pay["발행일"].notna()) & (~pay["입금완료"])].copy()
+    if not unpaid_all.empty:
+        unpaid_all["미수잔액"] = (
+            unpaid_all["금액"] - unpaid_all["고객입금액"].fillna(0)
+        ).clip(lower=0)
+        unpaid_all["경과일"] = (_today - unpaid_all["발행일"]).dt.days
+else:
+    unpaid_all = pd.DataFrame()
+
+# 발행 누락: 청구예정 ≤ 오늘 / 발행 X
+if not pay.empty:
+    overdue_all = pay[
+        (pay["청구예정일"].notna())
+        & (pay["청구예정일"] <= _today)
+        & (pay["발행일"].isna())
+    ].copy()
+    if not overdue_all.empty:
+        overdue_all["경과일"] = (_today - overdue_all["청구예정일"]).dt.days
+else:
+    overdue_all = pd.DataFrame()
 
 unpaid = _apply_search(unpaid_all)
 overdue_issue = _apply_search(overdue_all)
 
 # ============== KPI ==============
-total_unpaid = float(unpaid["총매출"].sum())
-total_overdue = float(overdue_issue["총매출"].sum())
+total_unpaid = float(unpaid["미수잔액"].sum()) if not unpaid.empty else 0.0
+total_overdue = float(overdue_issue["금액"].sum()) if not overdue_issue.empty else 0.0
 total_risk = total_unpaid + total_overdue
 
 
@@ -211,7 +246,7 @@ c1.markdown(
     kpi_card(
         "미수금",
         f"{total_unpaid/1e8:.2f}억",
-        f"{len(unpaid)}건 · 발행 완료 / 입금 X",
+        f"{len(unpaid)}회차 · 발행 완료 / 입금 X",
         danger=True,
     ),
     unsafe_allow_html=True,
@@ -220,7 +255,7 @@ c2.markdown(
     kpi_card(
         "발행 누락",
         f"{total_overdue/1e8:.2f}억",
-        f"{len(overdue_issue)}건 · 계약일 경과 / 발행 X",
+        f"{len(overdue_issue)}회차 · 청구예정 경과 / 발행 X",
         warn=True,
     ),
     unsafe_allow_html=True,
@@ -229,7 +264,7 @@ c3.markdown(
     kpi_card(
         "회수 리스크 합계",
         f"{total_risk/1e8:.2f}억",
-        f"{len(unpaid)+len(overdue_issue)}건 · 미수금 + 발행 누락",
+        f"{len(unpaid)+len(overdue_issue)}회차 · 미수금 + 발행 누락",
     ),
     unsafe_allow_html=True,
 )
@@ -237,84 +272,94 @@ c3.markdown(
 # ============== 미수금 상세 ==============
 st.markdown("## 🚨 미수금 상세")
 st.markdown(
-    '<div class="sec-meta">세금계산서 발행 완료 · 입금 미완료 — 발행일 오름차순</div>',
+    '<div class="sec-meta">세금계산서 발행 완료 · 입금 미완료 — 경과일 내림차순 · 결제 회차 단위</div>',
     unsafe_allow_html=True,
 )
 
 if unpaid_all.empty:
     st.success("미수금 없음. ✅")
 elif unpaid.empty:
-    st.info(f"'{search_query}' 검색 결과 없음 (전체 미수금 {len(unpaid_all)}건).")
+    st.info(f"'{search_query}' 검색 결과 없음 (전체 미수금 {len(unpaid_all)}회차).")
 else:
-    unpaid_view = unpaid[["세금계산서발행일", "고객기관", "name", "총매출", "상태", "url"]].copy()
-    unpaid_view.columns = ["발행일", "고객기관", "건명", "금액", "상태", "Notion"]
-    unpaid_view = unpaid_view.sort_values("발행일", ascending=True).reset_index(drop=True)
+    view = unpaid[[
+        "발행일", "경과일", "고객기관", "건명", "회차", "금액", "고객입금액", "미수잔액", "메모",
+    ]].copy()
+    view = view.sort_values("경과일", ascending=False).reset_index(drop=True)
     st.dataframe(
-        unpaid_view,
+        view,
         column_config={
             "발행일": st.column_config.DateColumn("발행일", format="YYYY-MM-DD"),
+            "경과일": st.column_config.NumberColumn("경과일", format="%d일"),
             "고객기관": st.column_config.TextColumn("고객기관"),
             "건명": st.column_config.TextColumn("건명"),
-            "금액": st.column_config.NumberColumn("금액 (원)", format="localized"),
-            "상태": st.column_config.TextColumn("상태"),
-            "Notion": st.column_config.LinkColumn("Notion", display_text="열기"),
+            "회차": st.column_config.TextColumn("회차", width="small"),
+            "금액": st.column_config.NumberColumn("발행액 (원)", format="localized"),
+            "고객입금액": st.column_config.NumberColumn("입금액 (원)", format="localized"),
+            "미수잔액": st.column_config.NumberColumn("미수잔액 (원)", format="localized"),
+            "메모": st.column_config.TextColumn("메모"),
         },
         hide_index=True,
         use_container_width=True,
     )
     st.caption(
-        f"합계: **{unpaid['총매출'].sum():,.0f}원** · {len(unpaid)}건 · "
-        f"평균 {unpaid['총매출'].mean():,.0f}원"
+        f"합계 미수잔액 **{unpaid['미수잔액'].sum():,.0f}원** · {len(unpaid)}회차 · "
+        f"최장 경과 {int(unpaid['경과일'].max())}일"
     )
     # 단일 고객 집중도 경고
-    if unpaid["총매출"].sum() > 0:
-        top_pct = unpaid["총매출"].max() / unpaid["총매출"].sum() * 100
+    by_cust = unpaid.groupby("고객기관", dropna=False)["미수잔액"].sum().sort_values(ascending=False)
+    if not by_cust.empty and by_cust.sum() > 0:
+        top_pct = by_cust.iloc[0] / by_cust.sum() * 100
         if top_pct > 50:
-            top_row = unpaid.loc[unpaid["총매출"].idxmax()]
-            name = top_row["고객기관"] or top_row["name"]
+            name = by_cust.index[0] or "(고객기관 미입력)"
             st.warning(
-                f"⚠️ 단일 고객 집중 위험: **{name}** 1건이 미수금의 **{top_pct:.0f}%** — 우선 회수 권장."
+                f"⚠️ 단일 고객 집중 위험: **{name}** 미수금이 전체의 **{top_pct:.0f}%** — 우선 회수 권장."
             )
 
 # ============== 세금계산서 발행 누락 ==============
 st.markdown("## 📝 세금계산서 발행 누락")
 st.markdown(
-    '<div class="sec-meta">계약일 경과 · 발행 미완료 (확정 건 한정) — 경과일 내림차순</div>',
+    '<div class="sec-meta">청구예정일 경과 · 발행 미완료 — 경과일 내림차순 · 결제 회차 단위</div>',
     unsafe_allow_html=True,
 )
 
 if overdue_all.empty:
     st.success("발행 누락 없음. ✅")
 elif overdue_issue.empty:
-    st.info(f"'{search_query}' 검색 결과 없음 (전체 발행 누락 {len(overdue_all)}건).")
+    st.info(f"'{search_query}' 검색 결과 없음 (전체 발행 누락 {len(overdue_all)}회차).")
 else:
-    over_view = overdue_issue[[
-        "계약일", "경과일", "고객기관", "name", "총매출", "상태", "url",
+    view = overdue_issue[[
+        "청구예정일", "경과일", "고객기관", "건명", "회차", "금액", "메모",
     ]].copy()
-    over_view.columns = ["계약일", "경과일", "고객기관", "건명", "금액", "상태", "Notion"]
-    over_view = over_view.sort_values("경과일", ascending=False).reset_index(drop=True)
+    view = view.sort_values("경과일", ascending=False).reset_index(drop=True)
     st.dataframe(
-        over_view,
+        view,
         column_config={
-            "계약일": st.column_config.DateColumn("계약일", format="YYYY-MM-DD"),
+            "청구예정일": st.column_config.DateColumn("청구예정일", format="YYYY-MM-DD"),
             "경과일": st.column_config.NumberColumn("경과일", format="%d일"),
             "고객기관": st.column_config.TextColumn("고객기관"),
             "건명": st.column_config.TextColumn("건명"),
-            "금액": st.column_config.NumberColumn("금액 (원)", format="localized"),
-            "상태": st.column_config.TextColumn("상태"),
-            "Notion": st.column_config.LinkColumn("Notion", display_text="열기"),
+            "회차": st.column_config.TextColumn("회차", width="small"),
+            "금액": st.column_config.NumberColumn("예정 발행액 (원)", format="localized"),
+            "메모": st.column_config.TextColumn("메모"),
         },
         hide_index=True,
         use_container_width=True,
     )
     st.caption(
-        f"합계: **{overdue_issue['총매출'].sum():,.0f}원** · {len(overdue_issue)}건 · "
+        f"합계 **{overdue_issue['금액'].sum():,.0f}원** · {len(overdue_issue)}회차 · "
         f"최장 경과 {int(overdue_issue['경과일'].max())}일"
     )
+
+# ============== 안내 ==============
+st.info(
+    "💡 **모든 수치는 [계약 관리 페이지](./계약_관리)와 실시간 연동됩니다.** "
+    "계약 관리에서 회차 수정 → 자동 캐시 무효화 → 이 페이지 즉시 갱신. "
+    "필요 시 좌측 사이드바 **🔄 캐시 새로고침** 버튼으로 강제 리로드."
+)
 
 # ============== 푸터 ==============
 st.markdown("---")
 st.caption(
     f"마지막 조회: {datetime.now().strftime('%Y-%m-%d %H:%M')} · "
-    f"출처: Notion 2026 영업현황 DB"
+    f"출처: Google Sheets (OnesGlobal Contracts)"
 )
