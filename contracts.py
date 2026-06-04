@@ -131,7 +131,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
     target = notion_df[notion_df["상태"].isin(CONFIRMED_STATES)].copy()
     new_contracts = []
     now = pd.Timestamp.now()
-    # contract_id → (분납회차 int, 총금액 float, 발행일 str, 입금완료 bool)
+    # contract_id → (분납회차 int, 총금액 float, 발행일 str)
     contract_payment_plan = {}
 
     for _, n in target.iterrows():
@@ -169,7 +169,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                 n["세금계산서발행일"].strftime("%Y-%m-%d")
                 if pd.notna(n.get("세금계산서발행일")) else ""
             ),
-            "입금완료": bool(n.get("입금완료")),
+            # 입금완료/입금일은 Notion과 연결 안 함 — Streamlit에서 직접 관리
         }
 
     if new_contracts:
@@ -180,7 +180,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
         )
 
     # 결제 회차 생성: 분납회차 N → N개 row 모두 생성
-    # 1회차에 한해 Notion 발행일/입금완료 값을 복사
+    # 1회차에 한해 Notion 발행일만 복사 (입금완료/입금일은 Streamlit에서 관리)
     new_payments_total = 0
     if new_contracts:
         ws_p = get_worksheet("Payments")
@@ -197,7 +197,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                     "회차": str(i),
                     "청구예정일": "",
                     "발행일": plan["발행일"] if is_first else "",
-                    "입금완료": "TRUE" if (is_first and plan["입금완료"]) else "FALSE",
+                    "입금완료": "FALSE",
                     "입금일": "",
                     "금액": per_amount,
                     "고객입금액": per_amount,  # 기본값: 발행액과 동일 (필요 시 표에서 직접 수정)
