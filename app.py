@@ -446,5 +446,5 @@ else:
 st.markdown("---")
 st.caption(
     f"마지막 조회: {datetime.now().strftime('%Y-%m-%d %H:%M')} | "
-    f"출처: Notion 2026 영업현황 DB ({DATA_SOURCE_ID := '2ab3a733...'})"
+    f"출처: Notion 2026 영업현황 DB (2ab3a733-4743-8132-91a6-000bdac816e9)"
 )
