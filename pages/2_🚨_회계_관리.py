@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 import contracts as ct
+from auth import require_auth
 
 # ============== Palette ==============
 PRIMARY = "#5B43C9"
@@ -27,6 +28,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+require_auth()
 
 # ============== CSS ==============
 st.markdown(

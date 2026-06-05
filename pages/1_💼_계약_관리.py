@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 import contracts as ct
+from auth import require_auth
 from data_loader import load_sales_data
 
 # ============== 색상 ==============
@@ -23,6 +24,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+require_auth()
 
 # 동일 헤더 스타일 (app.py와 일치)
 st.markdown(

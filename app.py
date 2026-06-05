@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from auth import require_auth
 from data_loader import explode_services, load_sales_data
 
 # ============== Palette ==============
@@ -33,6 +34,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+require_auth()
 
 # ============== CSS ==============
 st.markdown(
