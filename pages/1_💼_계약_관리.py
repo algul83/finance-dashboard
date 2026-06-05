@@ -310,6 +310,23 @@ with col_clear:
         help="검색어를 지우고 전체 계약 목록으로 돌아갑니다",
     )
 
+# ----- 상태 필터 (세금계산서 발행 · 입금) -----
+fc1, fc2 = st.columns(2)
+issue_filter = fc1.multiselect(
+    "세금계산서 발행",
+    options=["발행 완료", "부분 발행", "미발행"],
+    default=[],
+    placeholder="전체 (필터 없음)",
+    help="회차 단위로 집계: 전부 발행 / 일부 발행 / 전혀 미발행",
+)
+paid_filter = fc2.multiselect(
+    "입금",
+    options=["입금 완료", "부분 입금", "미입금"],
+    default=[],
+    placeholder="전체 (필터 없음)",
+    help="회차 단위로 집계: 전부 완료 / 일부 완료 / 전혀 미완료",
+)
+
 search_query = st.session_state.get("contract_search", "").strip()
 
 if search_query:
@@ -325,6 +342,44 @@ if search_query:
     customer_contracts = contracts_df[contracts_df.apply(_matches, axis=1)]
 else:
     customer_contracts = contracts_df
+
+
+def _issue_state(cid: str) -> str | None:
+    """계약의 발행 상태: '발행 완료' / '부분 발행' / '미발행'. 회차 없으면 None."""
+    rows = payments_df[payments_df["contract_id"] == cid] if not payments_df.empty else pd.DataFrame()
+    if rows.empty:
+        return None
+    issued = int(rows["발행일"].notna().sum())
+    total = len(rows)
+    if issued == 0:
+        return "미발행"
+    if issued == total:
+        return "발행 완료"
+    return "부분 발행"
+
+
+def _paid_state(cid: str) -> str | None:
+    rows = payments_df[payments_df["contract_id"] == cid] if not payments_df.empty else pd.DataFrame()
+    if rows.empty:
+        return None
+    paid = int(rows["입금완료"].sum())
+    total = len(rows)
+    if paid == 0:
+        return "미입금"
+    if paid == total:
+        return "입금 완료"
+    return "부분 입금"
+
+
+if (issue_filter or paid_filter) and not customer_contracts.empty:
+    mask = pd.Series(True, index=customer_contracts.index)
+    if issue_filter:
+        states = customer_contracts["contract_id"].apply(_issue_state)
+        mask &= states.isin(issue_filter)
+    if paid_filter:
+        states = customer_contracts["contract_id"].apply(_paid_state)
+        mask &= states.isin(paid_filter)
+    customer_contracts = customer_contracts[mask]
 
 # 검색 결과 요약 (검색어 입력 시)
 if search_query:
