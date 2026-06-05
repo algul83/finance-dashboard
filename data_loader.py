@@ -69,35 +69,53 @@ def load_sales_data() -> pd.DataFrame:
 
     notion = Client(auth=token)
     records = []
+    source_errors = []
     for ds_id in DATA_SOURCE_IDS:
-        cursor = None
-        while True:
-            kwargs = {"data_source_id": ds_id, "page_size": 100}
-            if cursor:
-                kwargs["start_cursor"] = cursor
-            resp = notion.data_sources.query(**kwargs)
-            for r in resp["results"]:
-                records.append({
-                    "id": r["id"],
-                    "source": ds_id,
-                    "url": r.get("url", ""),
-                    "name": _prop(r, "Name"),
-                    "고객기관": _prop(r, "고객 기관"),
-                    "상태": _normalize_status(_prop(r, "상태")),
-                    "신규갱신": _prop(r, "신규/갱신"),
-                    "서비스명": _prop(r, "서비스명") or [],
-                    "정산유형": _prop(r, "정산유형"),
-                    "분납회차": _prop(r, "분납회차"),  # select: '1회'/'3회'/'12회'
-                    "총매출": _prop(r, "총 매출금액(부가세포함)") or 0,
-                    "우선순위": _prop(r, "우선순위"),
-                    "계약일": _prop(r, "계약일"),
-                    "세금계산서발행일": _prop(r, "세금계산서 발행 일"),
-                    "입금완료": _prop(r, "입금완료 여부"),
-                    "비고": _prop(r, "비고"),
-                })
-            cursor = resp.get("next_cursor")
-            if not cursor:
-                break
+        try:
+            cursor = None
+            while True:
+                kwargs = {"data_source_id": ds_id, "page_size": 100}
+                if cursor:
+                    kwargs["start_cursor"] = cursor
+                resp = notion.data_sources.query(**kwargs)
+                for r in resp["results"]:
+                    records.append({
+                        "id": r["id"],
+                        "source": ds_id,
+                        "url": r.get("url", ""),
+                        "name": _prop(r, "Name"),
+                        "고객기관": _prop(r, "고객 기관"),
+                        "상태": _normalize_status(_prop(r, "상태")),
+                        "신규갱신": _prop(r, "신규/갱신"),
+                        "서비스명": _prop(r, "서비스명") or [],
+                        "정산유형": _prop(r, "정산유형"),
+                        "분납회차": _prop(r, "분납회차"),  # select: '1회'/'3회'/'12회'
+                        "총매출": _prop(r, "총 매출금액(부가세포함)") or 0,
+                        "우선순위": _prop(r, "우선순위"),
+                        "계약일": _prop(r, "계약일"),
+                        "세금계산서발행일": _prop(r, "세금계산서 발행 일"),
+                        "입금완료": _prop(r, "입금완료 여부"),
+                        "비고": _prop(r, "비고"),
+                    })
+                cursor = resp.get("next_cursor")
+                if not cursor:
+                    break
+        except Exception as e:
+            # 한 데이터 소스 권한 누락 등으로 실패해도 나머지로 계속 진행
+            source_errors.append((ds_id, str(e)[:200]))
+            try:
+                st.warning(
+                    f"⚠️ Notion 데이터 소스 `{ds_id[:8]}…` 로드 실패 (권한 또는 ID 확인 필요): {str(e)[:120]}"
+                )
+            except Exception:
+                pass
+
+    if not records and source_errors:
+        # 전부 실패한 경우만 raise
+        raise RuntimeError(
+            "모든 Notion 데이터 소스 로드 실패. 인테그레이션 권한을 확인하세요. "
+            + "; ".join(f"{sid[:8]}: {err[:80]}" for sid, err in source_errors)
+        )
 
     df = pd.DataFrame(records)
     if df.empty:
