@@ -200,58 +200,15 @@ if df.empty:
     st.warning("DB에 데이터가 없습니다.")
     st.stop()
 
-# ============== 사이드바 필터 ==============
-st.sidebar.header("🔧 필터")
-
-# 노션 영업현황은 계약일 기준만 의미 있음 (세금계산서 발행/입금은 시트에서 관리)
-date_col = "계약일"
-min_date = df[date_col].min()
-max_date = df[date_col].max()
-if pd.isna(min_date) or pd.isna(max_date):
-    min_date = pd.Timestamp("2026-01-01")
-    max_date = pd.Timestamp.now()
-
-date_range = st.sidebar.date_input(
-    "계약일 범위",
-    value=(min_date.date(), max_date.date()),
-    min_value=min_date.date(),
-    max_value=max_date.date(),
-)
-
-status_filter = st.sidebar.multiselect(
-    "상태",
-    options=["리드", "제안", "협상", "성공", "입금완료", "정산완료", "실패"],
-    default=["성공", "입금완료", "정산완료", "협상", "제안"],
-)
-nr_filter = st.sidebar.multiselect(
-    "신규/갱신",
-    options=["신규", "갱신", "일회성"],
-    default=["신규", "갱신", "일회성"],
-)
-all_services = sorted({s for row in df["서비스명"] for s in row})
-svc_filter = st.sidebar.multiselect("서비스명", options=all_services)
-
-st.sidebar.divider()
+# ============== 사이드바 (캐시 새로고침만 유지) ==============
 st.sidebar.caption(f"전체 {len(df)}건 / 캐시 10분")
 if st.sidebar.button("🔄 캐시 새로고침"):
     st.cache_data.clear()
     st.rerun()
 
-# ============== 필터 적용 ==============
+# 필터 사이드바 제거 — 전체 데이터를 그대로 사용
 fdf = df.copy()
-if status_filter:
-    fdf = fdf[fdf["상태"].isin(status_filter)]
-if nr_filter:
-    fdf = fdf[fdf["신규갱신"].isin(nr_filter)]
-if svc_filter:
-    fdf = fdf[fdf["서비스명"].apply(lambda lst: any(s in lst for s in svc_filter))]
-
-if len(date_range) == 2:
-    start, end = date_range
-    in_range = (fdf[date_col].notna()) & (fdf[date_col].dt.date >= start) & (fdf[date_col].dt.date <= end)
-    fdf_period = fdf[in_range].copy()
-else:
-    fdf_period = fdf.copy()
+fdf_period = fdf.copy()
 
 # ============== 집계 ==============
 # 발행/입금 관련 데이터는 회계관리 페이지(시트 기반)로 분리됨.
@@ -412,12 +369,6 @@ if not payments_df.empty and not contracts_for_unit.empty:
     billed["단가"] = pd.to_numeric(billed["단가"], errors="coerce").fillna(0)
 else:
     billed = pd.DataFrame()
-# 사이드바 date_range가 발행일 기간을 의미할 때만 적용 (period_basis와 무관하게 그대로 사용)
-if not billed.empty and len(date_range) == 2:
-    start, end = date_range
-    billed = billed[
-        (billed["발행일"].dt.date >= start) & (billed["발행일"].dt.date <= end)
-    ]
 
 if billed.empty:
     st.info(
