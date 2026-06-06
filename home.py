@@ -428,9 +428,9 @@ else:
     # 연도별 비교가 가능한 그룹 막대 — 월별/분기별일 때 연도별 색 분리
     billed["년도"] = billed["발행일"].dt.year.astype(str)
 
-    # 연도별 컬러 팔레트 (가장 최근 연도 = 진보라, 이전 연도들은 다른 톤)
+    # 모던 파스텔 톤 — 부드러운 보라/장미/민트 계열
     _years = sorted(billed["년도"].unique())
-    _year_palette = ["#F59E0B", PRIMARY, ACCENT, PRIMARY_DARK, "#0EA5E9"]
+    _year_palette = ["#A78BFA", "#5B43C9", "#F472B6", "#34D399", "#60A5FA"]
     _color_map = {y: _year_palette[i % len(_year_palette)] for i, y in enumerate(_years)}
 
     if period_unit == "월별":
@@ -439,8 +439,8 @@ else:
         fig = px.bar(
             agg, x="월", y="단가", color="년도",
             color_discrete_map=_color_map, barmode="group",
-            labels={"단가": "매출 (원)", "월": "", "년도": ""},
-            text="단가",
+            labels={"단가": "", "월": "", "년도": ""},
+            custom_data=["년도"],
         )
         fig.update_xaxes(
             tickmode="array", tickvals=list(range(1, 13)),
@@ -452,8 +452,8 @@ else:
         fig = px.bar(
             agg, x="분기", y="단가", color="년도",
             color_discrete_map=_color_map, barmode="group",
-            labels={"단가": "매출 (원)", "분기": "", "년도": ""},
-            text="단가",
+            labels={"단가": "", "분기": "", "년도": ""},
+            custom_data=["년도"],
         )
         fig.update_xaxes(
             tickmode="array", tickvals=[1, 2, 3, 4],
@@ -464,46 +464,55 @@ else:
         fig = px.bar(
             agg, x="년도", y="단가",
             color="년도", color_discrete_map=_color_map,
-            labels={"단가": "매출 (원)", "년도": ""},
-            text="단가",
+            labels={"단가": "", "년도": ""},
         )
     else:  # 일별
         billed["일"] = billed["발행일"].dt.date
         agg = billed.groupby("일")["단가"].sum().reset_index()
         fig = px.bar(
             agg, x="일", y="단가",
-            color_discrete_sequence=[PRIMARY],
-            labels={"단가": "매출 (원)", "일": ""},
+            color_discrete_sequence=["#A78BFA"],
+            labels={"단가": "", "일": ""},
         )
 
+    # 라운드 처리 — Plotly 막대는 native border-radius가 없어 marker로 부드럽게
     fig.update_traces(
-        marker_line_width=0,
-        texttemplate="%{text:,.0f}",
-        textposition="outside",
-        textfont=dict(size=10),
-        cliponaxis=False,
+        marker=dict(line=dict(width=0), opacity=0.92),
+        hovertemplate="<b>%{x}</b><br>%{y:,.0f}원<extra></extra>",
     )
     fig.update_layout(
-        height=420,
+        height=380,
         plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(l=10, r=10, t=30, b=10),
+        margin=dict(l=20, r=20, t=50, b=20),
         font=dict(family="Pretendard, Malgun Gothic, 맑은 고딕, sans-serif",
-                  size=12, color="#1E1B2E"),
-        showlegend=(period_unit in ("월별", "분기별")),
+                  size=12, color="#374151"),
+        showlegend=(period_unit in ("월별", "분기별", "연별")),
         legend=dict(
             orientation="h", yanchor="bottom", y=1.02,
-            x=1.0, xanchor="right",
-            bgcolor="rgba(255,255,255,0.85)",
-            font=dict(size=11),
+            x=0, xanchor="left",
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=11, color="#6B6A73"),
+            itemclick="toggle", itemwidth=30,
+        ),
+        xaxis=dict(
+            showline=False, showgrid=False, zeroline=False,
+            tickfont=dict(size=11, color="#6B6A73"),
+            ticks="", title="",
         ),
         yaxis=dict(
-            showgrid=True, gridcolor="#F0EFF5",
+            showgrid=True, gridcolor="#F4F2FA", gridwidth=1,
             showline=False, zeroline=False, title="",
             separatethousands=True,
+            tickfont=dict(size=10, color="#9CA3AF"),
+            ticksuffix="  ",
         ),
-        bargap=0.18, bargroupgap=0.08,
-        hoverlabel=dict(bgcolor="white", bordercolor="#E5E5E8",
-                        font=dict(family="Pretendard, sans-serif", size=12)),
+        bargap=0.35, bargroupgap=0.12,
+        hoverlabel=dict(
+            bgcolor="rgba(31, 30, 41, 0.92)", bordercolor="rgba(0,0,0,0)",
+            font=dict(family="Pretendard, sans-serif", size=12, color="white"),
+            align="left",
+        ),
+        hovermode="x unified",
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
