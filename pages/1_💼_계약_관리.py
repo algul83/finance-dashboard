@@ -569,14 +569,14 @@ def _render_contract_card(c):
                 <table style='width:100%;border-collapse:separate;border-spacing:4px 0;
                               table-layout:fixed;margin-bottom:4px'>
                     <colgroup>
-                        <col style='width:3.5%'>
-                        <col style='width:18%'>
-                        <col style='width:20%'>
-                        <col style='width:11%'>
-                        <col style='width:11%'>
-                        <col style='width:11%'>
-                        <col style='width:21%'>
-                        <col style='width:4.5%'>
+                        <col style='width:5%'>
+                        <col style='width:15%'>
+                        <col style='width:15%'>
+                        <col style='width:15%'>
+                        <col style='width:15%'>
+                        <col style='width:15%'>
+                        <col style='width:15%'>
+                        <col style='width:5%'>
                     </colgroup>
                     <tr>
                         <td style='{_td_label}'>합계</td>
@@ -601,9 +601,14 @@ def _render_contract_card(c):
                     "청구예정일": st.column_config.DateColumn(
                         "청구 예정일",
                         format="YYYY-MM-DD",
+                        width=150,
                         help="세금계산서 발행 예정 날짜",
                     ),
-                    "발행일": st.column_config.DateColumn("세금계산서 발행일", format="YYYY-MM-DD"),
+                    "발행일": st.column_config.DateColumn(
+                        "세금계산서 발행일",
+                        format="YYYY-MM-DD",
+                        width=150,
+                    ),
                     "금액": st.column_config.NumberColumn(
                         "매출액 (부가세포함)",
                         format="localized",
@@ -625,6 +630,7 @@ def _render_contract_card(c):
                     "입금일": st.column_config.DateColumn(
                         "입금일",
                         format="YYYY-MM-DD",
+                        width=150,
                         help="날짜를 입력하면 자동으로 입금완료(✅) 처리됩니다",
                     ),
                 },
