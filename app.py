@@ -188,7 +188,7 @@ st.markdown(
 # ============== 헤더 ==============
 st.markdown(
     f'<div class="top-header">'
-    f'<div class="top-logo">💰 회계 인사이트</div>'
+    f'<div class="top-logo">🏠 홈</div>'
     f'<div class="top-tag">Onesglobal Internal</div>'
     f'<div style="flex:1;"></div>'
     f'<div style="color:rgba(255,255,255,0.85);font-size:0.85rem;">'
@@ -411,43 +411,128 @@ st.info(
     "(좌측 사이드바). 회수 우선순위·경과일 추적 가능."
 )
 
-# ============== 월별 매출 추이 ==============
-st.markdown("## 📅 월별 매출 추이")
-st.markdown(
-    '<div class="sec-meta">세금계산서 발행 기준 — 월별 누계</div>',
-    unsafe_allow_html=True,
-)
+# ============== 매출 추이 ==============
+st.markdown("## 📅 매출 추이")
+hdr_cols = st.columns([6, 4])
+with hdr_cols[0]:
+    st.markdown(
+        '<div class="sec-meta">세금계산서 발행 기준 · 신규/갱신/일회성 구분</div>',
+        unsafe_allow_html=True,
+    )
+with hdr_cols[1]:
+    period_unit = st.radio(
+        "기간 단위",
+        options=["연별", "분기별", "월별", "일별"],
+        index=2,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="revenue_period_unit",
+    )
 
-monthly = fdf[fdf["세금계산서발행일"].notna()].copy()
-monthly["월"] = monthly["세금계산서발행일"].dt.to_period("M").astype(str)
-month_agg = monthly.groupby("월").agg(건수=("name", "count"), 매출=("총매출", "sum")).reset_index()
+import plotly.graph_objects as go
 
-if not month_agg.empty:
-    fig = px.bar(
-        month_agg, x="월", y="매출", text="매출",
-        labels={"매출": "매출 (원)", "월": ""},
-        color_discrete_sequence=[PRIMARY],
-    )
-    fig.update_traces(
-        texttemplate="%{text:,.0f}",
-        textposition="outside",
-        marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>매출 %{y:,.0f}원<extra></extra>",
-    )
-    fig.update_layout(
-        height=340,
-        margin=dict(l=0, r=0, t=10, b=0),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        yaxis=dict(showgrid=True, gridcolor="#F0EFF5", title=""),
-        xaxis=dict(title=""),
-        font=dict(family="Pretendard, sans-serif", size=12),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    total_issued = month_agg["매출"].sum()
-    st.caption(f"누적 발행 매출: **{total_issued:,.0f}원** · {total_issued/1e8:.2f}억")
-else:
+UNIT_MAP = {
+    "일별": {"freq": "D",  "fmt": "%Y-%m-%d", "ma": 7,  "ma_label": "7일 MA"},
+    "월별": {"freq": "M",  "fmt": "%Y-%m",     "ma": 3,  "ma_label": "3개월 MA"},
+    "분기별": {"freq": "Q", "fmt": None,       "ma": 2,  "ma_label": "2분기 MA"},
+    "연별": {"freq": "Y",  "fmt": "%Y",       "ma": None, "ma_label": None},
+}
+unit_cfg = UNIT_MAP[period_unit]
+
+billed = fdf[fdf["세금계산서발행일"].notna()].copy()
+if billed.empty:
     st.info("기간 내 세금계산서 발행 건이 없습니다.")
+else:
+    billed["period"] = billed["세금계산서발행일"].dt.to_period(unit_cfg["freq"]).dt.start_time
+    billed["신규갱신"] = billed["신규갱신"].fillna("(미입력)")
+
+    agg = (
+        billed.groupby(["period", "신규갱신"])["총매출"].sum()
+        .reset_index().sort_values(["신규갱신", "period"])
+    )
+    if unit_cfg["ma"] and unit_cfg["ma"] > 1:
+        agg["ma"] = (
+            agg.groupby("신규갱신")["총매출"]
+            .transform(lambda s: s.rolling(window=unit_cfg["ma"], min_periods=1).mean())
+        )
+
+    GROUP_COLORS = {
+        "신규": PRIMARY,
+        "갱신": ACCENT,
+        "일회성": WARN,
+        "(미입력)": "#9CA3AF",
+    }
+
+    def _to_rgba(hex_color, a=0.18):
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{a})"
+
+    # 그룹 순서: 신규 → 갱신 → 일회성 → (미입력)
+    order = ["신규", "갱신", "일회성", "(미입력)"]
+    groups = [g for g in order if g in agg["신규갱신"].unique()]
+
+    fig = go.Figure()
+    for grp in groups:
+        sub = agg[agg["신규갱신"] == grp]
+        color = GROUP_COLORS.get(grp, PRIMARY)
+        fig.add_trace(go.Scatter(
+            x=sub["period"], y=sub["총매출"],
+            mode="lines+markers", name=grp,
+            line=dict(color=color, width=2.4, shape="spline", smoothing=0.8),
+            marker=dict(size=7, color="white", line=dict(width=2, color=color)),
+            fill="tozeroy", fillcolor=_to_rgba(color, 0.18),
+            hovertemplate=f"<b>%{{x|{unit_cfg['fmt'] or '%Y-%m-%d'}}}</b><br>{grp} %{{y:,.0f}}원<extra></extra>",
+        ))
+        if unit_cfg["ma_label"] and "ma" in agg.columns:
+            fig.add_trace(go.Scatter(
+                x=sub["period"], y=sub["ma"],
+                mode="lines", name=f"{grp} · {unit_cfg['ma_label']}",
+                line=dict(color=color, width=1.4, dash="dash"),
+                opacity=0.7,
+                hovertemplate=f"<b>%{{x|{unit_cfg['fmt'] or '%Y-%m-%d'}}}</b><br>{grp} {unit_cfg['ma_label']} %{{y:,.0f}}<extra></extra>",
+            ))
+
+    xaxis_kwargs = dict(
+        showgrid=False, showline=False, zeroline=False, title="",
+        tickangle=0,
+    )
+    if period_unit == "분기별":
+        # period.start_time을 'YYYY-Q?' 라벨로 매핑
+        unique_p = sorted(agg["period"].unique())
+        ticktext = [f"{pd.Timestamp(p).year}-Q{(pd.Timestamp(p).month-1)//3+1}" for p in unique_p]
+        xaxis_kwargs.update(tickmode="array", tickvals=unique_p, ticktext=ticktext)
+    elif unit_cfg["fmt"]:
+        xaxis_kwargs["tickformat"] = unit_cfg["fmt"]
+        if period_unit == "월별":
+            xaxis_kwargs["dtick"] = "M1"
+        elif period_unit == "연별":
+            xaxis_kwargs["dtick"] = "M12"
+
+    fig.update_layout(
+        height=380, hovermode="x unified",
+        plot_bgcolor="white", paper_bgcolor="white",
+        margin=dict(l=10, r=10, t=40, b=10),
+        font=dict(family="Pretendard, Malgun Gothic, 맑은 고딕, sans-serif", size=12, color="#1E1B2E"),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02,
+            x=0.5, xanchor="center",
+            bgcolor="rgba(255,255,255,0.85)",
+            font=dict(size=10, family="Pretendard, sans-serif"),
+        ),
+        xaxis=xaxis_kwargs,
+        yaxis=dict(
+            showgrid=True, gridcolor="#F0EFF5",
+            showline=False, zeroline=False, title="",
+            separatethousands=True,
+        ),
+        hoverlabel=dict(bgcolor="white", bordercolor="#E5E5E8",
+                        font=dict(family="Pretendard, sans-serif", size=12)),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    total_issued = agg["총매출"].sum()
+    st.caption(f"누적 발행 매출: **{total_issued:,.0f}원** · {total_issued/1e8:.2f}억")
 
 # ============== 영업 파이프라인 ==============
 st.markdown("## 🎯 영업 파이프라인")
