@@ -546,7 +546,10 @@ with _exp_cols[1]:
         st.rerun()
 
 # st.tabs는 rerun 시 첫 탭으로 리셋되므로 session_state 유지되는 segmented_control 사용.
-# options에 stable id를 두고 표시 라벨은 format_func로 동적 생성 (카운트 변동에도 매칭 유지).
+# default 인자는 매 rerun마다 session_state를 덮어쓸 수 있으므로 명시적 초기화로 분리.
+if "contract_tab_choice" not in st.session_state:
+    st.session_state["contract_tab_choice"] = "active"
+
 _selected_tab = st.segmented_control(
     "계약 상태 탭",
     options=["active", "ended"],
@@ -555,10 +558,12 @@ _selected_tab = st.segmented_control(
         if x == "active"
         else f"🗂️ 종료 ({len(_ended_contracts)}건)"
     ),
-    default="active",
     key="contract_tab_choice",
     label_visibility="collapsed",
 )
+# 사용자가 선택 해제(None)한 경우 진행 중으로 fallback
+if _selected_tab is None:
+    _selected_tab = "active"
 
 
 def _render_contract_card(c):
