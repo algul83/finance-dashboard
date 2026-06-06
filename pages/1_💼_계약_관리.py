@@ -521,24 +521,29 @@ _ended_contracts = customer_contracts[_ended_mask]
 st.markdown(
     """
     <style>
-    /* 모두 펼치기/접기 버튼 라벨 한 줄 유지 + segmented_control과 동일 높이 */
-    button[key="expand_all_btn"] p,
-    button[key="collapse_all_btn"] p,
+    /* 모두 펼치기/접기 버튼 라벨 한 줄 유지 */
     div[data-testid="stHorizontalBlock"] button p {
         white-space: nowrap !important;
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    /* segmented_control + 펼치기/접기 버튼 같은 라인 vertical center */
+    /* 탭(segmented_control) row의 모든 컬럼 — flex vertical center */
     div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSegmentedControl"])
         > div[data-testid="stColumn"] {
         display: flex !important;
         align-items: center !important;
     }
-    /* 탭과 같은 높이의 버튼 */
-    button[key="expand_all_btn"],
-    button[key="collapse_all_btn"] {
+    /* 탭(segmented_control)이 있는 row의 모든 버튼을 38px로 강제 — 탭과 동일 높이 */
+    div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSegmentedControl"]) button {
         height: 38px !important;
+        min-height: 38px !important;
+        max-height: 38px !important;
+        padding: 0 14px !important;
+        line-height: 1 !important;
+        box-sizing: border-box !important;
+    }
+    /* segmented_control 자체 + 내부 버튼도 38px 통일 */
+    div[data-testid="stSegmentedControl"] {
         min-height: 38px !important;
     }
     </style>
