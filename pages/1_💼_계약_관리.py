@@ -423,6 +423,19 @@ _ended_mask = _date_ended & _fully_paid_mask
 _active_contracts = customer_contracts[~_ended_mask]
 _ended_contracts = customer_contracts[_ended_mask]
 
+# 모두 펼치기 / 모두 접기 — 현재 필터된 모든 계약(진행중+종료)에 적용
+_exp_cols = st.columns([1, 1, 6])
+with _exp_cols[0]:
+    if st.button("📂 모두 펼치기", use_container_width=True, key="expand_all_btn"):
+        for _cid in customer_contracts["contract_id"]:
+            st.session_state[f"expand_{_cid}"] = True
+        st.rerun()
+with _exp_cols[1]:
+    if st.button("📁 모두 접기", use_container_width=True, key="collapse_all_btn"):
+        for _cid in customer_contracts["contract_id"]:
+            st.session_state[f"expand_{_cid}"] = False
+        st.rerun()
+
 _tab_active, _tab_ended = st.tabs([
     f"📂 진행 중 ({len(_active_contracts)}건)",
     f"🗂️ 종료 ({len(_ended_contracts)}건)",
