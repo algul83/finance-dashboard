@@ -312,53 +312,7 @@ if not _issued.empty:
     if "inv_end" not in st.session_state:
         st.session_state["inv_end"] = _inv_max
 
-    DAYS_MAP = {"1일": 1, "1주일": 7, "1개월": 30, "3개월": 90, "6개월": 180, "12개월": 365}
-
-    def _sync_inv_quick():
-        q = st.session_state.get("inv_quick", "전체")
-        if q == "전체":
-            st.session_state["inv_start"] = _inv_min
-            st.session_state["inv_end"] = _inv_max
-        else:
-            st.session_state["inv_end"] = _inv_max
-            st.session_state["inv_start"] = max(
-                _inv_min, _inv_max - pd.Timedelta(days=DAYS_MAP[q])
-            )
-
-    # 빠른 기간 라디오 — pill 스타일
-    st.markdown(
-        f"""
-        <style>
-        /* 빠른 기간 라디오 — 회색 알약 컨테이너 */
-        div[data-testid="stHorizontalBlock"] div[role="radiogroup"] {{
-            background: #F0F0F4 !important;
-            border-radius: 999px !important;
-            padding: 4px !important;
-            gap: 0 !important;
-            display: inline-flex !important;
-            width: fit-content !important;
-        }}
-        div[data-testid="stHorizontalBlock"] div[role="radiogroup"] > label {{
-            background: transparent !important; border: 0 !important;
-            padding: 6px 14px !important; border-radius: 999px !important;
-            font-size: 0.82rem !important; color: #8B8A95 !important;
-            box-shadow: none !important; min-width: 50px !important;
-            text-align: center !important;
-        }}
-        div[data-testid="stHorizontalBlock"] div[role="radiogroup"] > label:has(input:checked) {{
-            background: white !important;
-            color: {PRIMARY} !important; font-weight: 700 !important;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
-        }}
-        div[data-testid="stHorizontalBlock"] div[role="radiogroup"] > label > div:first-child {{
-            display: none !important;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    _fc = st.columns([1.5, 0.2, 1.5, 5.5, 0.8])
+    _fc = st.columns([1.5, 0.2, 1.5, 4, 1, 1])
     with _fc[0]:
         st.date_input(
             "📅 시작일",
@@ -377,17 +331,6 @@ if not _issued.empty:
             min_value=_inv_min, max_value=_inv_max,
             key="inv_end",
         )
-    with _fc[3]:
-        st.markdown('<div style="margin-top:28px;"></div>', unsafe_allow_html=True)
-        st.radio(
-            "빠른 기간",
-            options=["1일", "1주일", "1개월", "3개월", "6개월", "12개월", "전체"],
-            index=6,
-            horizontal=True,
-            label_visibility="collapsed",
-            key="inv_quick",
-            on_change=_sync_inv_quick,
-        )
     with _fc[4]:
         st.markdown('<div style="margin-top:28px;"></div>', unsafe_allow_html=True)
         if st.button("적용", use_container_width=True, key="inv_apply_btn", type="primary"):
@@ -395,13 +338,10 @@ if not _issued.empty:
                 "start": st.session_state["inv_start"],
                 "end": st.session_state["inv_end"],
             }
+    with _fc[5]:
+        st.markdown('<div style="margin-top:28px;"></div>', unsafe_allow_html=True)
         if st.session_state.get("inv_applied"):
-            if st.button(
-                "해제",
-                use_container_width=True,
-                key="inv_clear_btn",
-                help="발행일 필터 해제 (전체 표시)",
-            ):
+            if st.button("해제", use_container_width=True, key="inv_clear_btn"):
                 st.session_state.pop("inv_applied", None)
                 st.rerun()
 
