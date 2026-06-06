@@ -22,13 +22,7 @@ ACCENT = "#10B981"
 WARN = "#F59E0B"
 DANGER = "#E84C3D"
 
-st.set_page_config(
-    page_title="회계 관리 · 원스글로벌",
-    page_icon="🚨",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
+# st.set_page_config는 navigation entry(app.py)가 처리. require_auth는 방어용으로 유지.
 require_auth()
 
 # ============== CSS ==============
