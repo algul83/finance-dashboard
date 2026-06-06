@@ -406,7 +406,7 @@ st.markdown("## 📅 매출 추이")
 hdr_cols = st.columns([6, 4])
 with hdr_cols[0]:
     st.markdown(
-        '<div class="sec-meta">세금계산서 발행 기준 · 신규/갱신/일회성 구분</div>',
+        '<div class="sec-meta">세금계산서 발행 기준 · 기간별 총액</div>',
         unsafe_allow_html=True,
     )
 with hdr_cols[1]:
@@ -422,10 +422,10 @@ with hdr_cols[1]:
 import plotly.graph_objects as go
 
 UNIT_MAP = {
-    "일별": {"freq": "D",  "fmt": "%Y-%m-%d", "ma": 7,  "ma_label": "7일 MA"},
-    "월별": {"freq": "M",  "fmt": "%Y-%m",     "ma": 3,  "ma_label": "3개월 MA"},
-    "분기별": {"freq": "Q", "fmt": None,       "ma": 2,  "ma_label": "2분기 MA"},
-    "연별": {"freq": "Y",  "fmt": "%Y",       "ma": None, "ma_label": None},
+    "일별": {"freq": "D",  "fmt": "%Y-%m-%d"},
+    "월별": {"freq": "M",  "fmt": "%Y-%m"},
+    "분기별": {"freq": "Q", "fmt": None},
+    "연별": {"freq": "Y",  "fmt": "%Y"},
 }
 unit_cfg = UNIT_MAP[period_unit]
 
@@ -434,61 +434,31 @@ if billed.empty:
     st.info("기간 내 세금계산서 발행 건이 없습니다.")
 else:
     billed["period"] = billed["세금계산서발행일"].dt.to_period(unit_cfg["freq"]).dt.start_time
-    billed["신규갱신"] = billed["신규갱신"].fillna("(미입력)")
-
     agg = (
-        billed.groupby(["period", "신규갱신"])["총매출"].sum()
-        .reset_index().sort_values(["신규갱신", "period"])
+        billed.groupby("period")["총매출"].sum()
+        .reset_index().sort_values("period")
     )
-    if unit_cfg["ma"] and unit_cfg["ma"] > 1:
-        agg["ma"] = (
-            agg.groupby("신규갱신")["총매출"]
-            .transform(lambda s: s.rolling(window=unit_cfg["ma"], min_periods=1).mean())
-        )
-
-    GROUP_COLORS = {
-        "신규": PRIMARY,
-        "갱신": ACCENT,
-        "일회성": WARN,
-        "(미입력)": "#9CA3AF",
-    }
 
     def _to_rgba(hex_color, a=0.18):
         h = hex_color.lstrip("#")
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return f"rgba({r},{g},{b},{a})"
 
-    # 그룹 순서: 신규 → 갱신 → 일회성 → (미입력)
-    order = ["신규", "갱신", "일회성", "(미입력)"]
-    groups = [g for g in order if g in agg["신규갱신"].unique()]
-
     fig = go.Figure()
-    for grp in groups:
-        sub = agg[agg["신규갱신"] == grp]
-        color = GROUP_COLORS.get(grp, PRIMARY)
-        fig.add_trace(go.Scatter(
-            x=sub["period"], y=sub["총매출"],
-            mode="lines+markers", name=grp,
-            line=dict(color=color, width=2.4, shape="spline", smoothing=0.8),
-            marker=dict(size=7, color="white", line=dict(width=2, color=color)),
-            fill="tozeroy", fillcolor=_to_rgba(color, 0.18),
-            hovertemplate=f"<b>%{{x|{unit_cfg['fmt'] or '%Y-%m-%d'}}}</b><br>{grp} %{{y:,.0f}}원<extra></extra>",
-        ))
-        if unit_cfg["ma_label"] and "ma" in agg.columns:
-            fig.add_trace(go.Scatter(
-                x=sub["period"], y=sub["ma"],
-                mode="lines", name=f"{grp} · {unit_cfg['ma_label']}",
-                line=dict(color=color, width=1.4, dash="dash"),
-                opacity=0.7,
-                hovertemplate=f"<b>%{{x|{unit_cfg['fmt'] or '%Y-%m-%d'}}}</b><br>{grp} {unit_cfg['ma_label']} %{{y:,.0f}}<extra></extra>",
-            ))
+    fig.add_trace(go.Scatter(
+        x=agg["period"], y=agg["총매출"],
+        mode="lines+markers", name="매출",
+        line=dict(color=PRIMARY, width=2.4, shape="spline", smoothing=0.8),
+        marker=dict(size=7, color="white", line=dict(width=2, color=PRIMARY)),
+        fill="tozeroy", fillcolor=_to_rgba(PRIMARY, 0.18),
+        hovertemplate=f"<b>%{{x|{unit_cfg['fmt'] or '%Y-%m-%d'}}}</b><br>매출 %{{y:,.0f}}원<extra></extra>",
+    ))
 
     xaxis_kwargs = dict(
         showgrid=False, showline=False, zeroline=False, title="",
         tickangle=0,
     )
     if period_unit == "분기별":
-        # period.start_time을 'YYYY-Q?' 라벨로 매핑
         unique_p = sorted(agg["period"].unique())
         ticktext = [f"{pd.Timestamp(p).year}-Q{(pd.Timestamp(p).month-1)//3+1}" for p in unique_p]
         xaxis_kwargs.update(tickmode="array", tickvals=unique_p, ticktext=ticktext)
@@ -502,14 +472,9 @@ else:
     fig.update_layout(
         height=380, hovermode="x unified",
         plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(l=10, r=10, t=40, b=10),
+        margin=dict(l=10, r=10, t=20, b=10),
         font=dict(family="Pretendard, Malgun Gothic, 맑은 고딕, sans-serif", size=12, color="#1E1B2E"),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02,
-            x=0.5, xanchor="center",
-            bgcolor="rgba(255,255,255,0.85)",
-            font=dict(size=10, family="Pretendard, sans-serif"),
-        ),
+        showlegend=False,
         xaxis=xaxis_kwargs,
         yaxis=dict(
             showgrid=True, gridcolor="#F0EFF5",
