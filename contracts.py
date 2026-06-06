@@ -58,7 +58,7 @@ PAYMENT_COLUMNS = [
     "created_at",
 ]
 
-PAYMENT_METHODS = ["세금계산서", "계산서", "카드결제"]
+PAYMENT_METHODS = ["세금계산서", "계산서", "카드결제", "현금영수증"]
 
 
 def _ensure_headers(ws, expected_headers: list[str]) -> None:
