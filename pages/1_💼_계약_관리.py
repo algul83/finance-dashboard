@@ -545,10 +545,17 @@ with _exp_cols[1]:
             st.session_state[f"expand_{_cid}"] = False
         st.rerun()
 
-_tab_active, _tab_ended = st.tabs([
-    f"📂 진행 중 ({len(_active_contracts)}건)",
-    f"🗂️ 종료 ({len(_ended_contracts)}건)",
-])
+# st.tabs는 rerun 시 첫 탭으로 리셋되므로 session_state 유지되는 segmented_control 사용
+_tab_active_label = f"📂 진행 중 ({len(_active_contracts)}건)"
+_tab_ended_label = f"🗂️ 종료 ({len(_ended_contracts)}건)"
+
+_selected_tab = st.segmented_control(
+    "계약 상태 탭",
+    options=[_tab_active_label, _tab_ended_label],
+    default=_tab_active_label,
+    key="contract_tab_choice",
+    label_visibility="collapsed",
+)
 
 
 def _render_contract_card(c):
@@ -934,18 +941,17 @@ def _render_contract_card(c):
             st.caption(f"📝 메모: {c['메모']}")
 
 
-with _tab_active:
-    if _active_contracts.empty:
-        st.info("진행 중인 계약이 없습니다.")
-    else:
-        for _, c in _active_contracts.iterrows():
-            _render_contract_card(c)
-
-with _tab_ended:
+if _selected_tab == _tab_ended_label:
     if _ended_contracts.empty:
         st.info("종료된 계약이 없습니다.")
     else:
         for _, c in _ended_contracts.iterrows():
+            _render_contract_card(c)
+else:
+    if _active_contracts.empty:
+        st.info("진행 중인 계약이 없습니다.")
+    else:
+        for _, c in _active_contracts.iterrows():
             _render_contract_card(c)
 
 # ============== 푸터 ==============
