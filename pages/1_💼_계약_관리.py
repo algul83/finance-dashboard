@@ -618,9 +618,13 @@ def _render_contract_card(c):
             except (TypeError, ValueError):
                 _단가_val = 0
             view["단가"] = pd.Series([_단가_val] * len(view), dtype="Int64", index=view.index)
-            # 컬럼 순서 재정렬: 매출액(금액) 우측에 단가
+            # 계약 단위 결제방법을 모든 회차 row에 동일 값으로 표시
+            _결제방법_val = str(c.get("결제방법") or "").strip()
+            view["결제방법"] = pd.Series([_결제방법_val] * len(view), index=view.index)
+            # 컬럼 순서 재정렬: 발행일 → 결제방법, 매출액 → 단가
             view = view[[
-                "payment_id", "회차", "청구예정일", "발행일", "금액", "단가", "고객입금액", "입금일",
+                "payment_id", "회차", "청구예정일", "발행일", "결제방법",
+                "금액", "단가", "고객입금액", "입금일",
             ]]
             # 해외대조약은 고객입금액 공란 유지 (수기 입력)
             # 그 외 서비스만 0 → 금액 fallback (기존 0 데이터 호환)
@@ -653,6 +657,7 @@ def _render_contract_card(c):
                         <col style='width:50px'>
                         <col style='width:150px'>
                         <col style='width:150px'>
+                        <col style='width:130px'>
                         <col style='width:150px'>
                         <col style='width:150px'>
                         <col style='width:150px'>
@@ -660,6 +665,7 @@ def _render_contract_card(c):
                     </colgroup>
                     <tr>
                         <td style='{_td_label}'>합계</td>
+                        <td></td>
                         <td></td>
                         <td></td>
                         <td style='{_td_num}'>{_sum_금액:,}원</td>
@@ -687,6 +693,12 @@ def _render_contract_card(c):
                         "세금계산서 발행일",
                         format="YYYY-MM-DD",
                         width=150,
+                    ),
+                    "결제방법": st.column_config.SelectboxColumn(
+                        "결제 방법",
+                        options=ct.PAYMENT_METHODS,
+                        width=130,
+                        help="계약 단위. 어느 행이든 수정하면 저장 시 계약 단위로 반영됩니다.",
                     ),
                     "금액": st.column_config.NumberColumn(
                         "매출액 (부가세포함)",
@@ -799,6 +811,14 @@ def _render_contract_card(c):
                 if len(new_단가_vals) > 0:
                     new_단가 = int(new_단가_vals[0])
                     ct.update_contract_meta(contract_id, 단가=new_단가 if new_단가 > 0 else "")
+
+                # 결제방법 컬럼: 어느 row든 변경되면 계약 단위로 반영
+                orig_결제 = str(c.get("결제방법") or "").strip()
+                edited_결제 = edited["결제방법"].fillna("").astype(str).str.strip()
+                new_결제_vals = edited_결제[edited_결제 != orig_결제].unique()
+                if len(new_결제_vals) > 0:
+                    new_결제 = str(new_결제_vals[0]).strip()
+                    ct.update_contract_meta(contract_id, 결제방법=new_결제)
 
                 # 분납회차 12회 + 1회차 청구예정일 입력된 경우 → 2~12회차 청구예정일 자동 채움 (빈 셀만)
                 try:
