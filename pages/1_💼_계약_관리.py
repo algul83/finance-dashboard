@@ -533,6 +533,33 @@ def _render_contract_card(c):
             else:
                 view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
 
+            # 합계 strip — 회차/청구예정일/발행일 자리는 라벨, 금액/단가/고객입금액에 합계 표시
+            _sum_금액 = int(view["금액"].fillna(0).sum())
+            _sum_단가 = int(pd.to_numeric(view["단가"], errors="coerce").fillna(0).sum())
+            _sum_고객 = int(pd.to_numeric(view["고객입금액"], errors="coerce").fillna(0).sum())
+
+            def _cell_label():
+                return (
+                    "background:#F1EEFB;color:#4A35B0;font-weight:700;"
+                    "padding:8px 10px;border-radius:6px;text-align:center;font-size:0.82rem;"
+                )
+
+            def _cell_value(num=False):
+                base = (
+                    "background:#FAFAFC;color:#1E1B2E;padding:8px 10px;"
+                    "border-radius:6px;font-size:0.86rem;"
+                )
+                return base + ("font-weight:700;text-align:right" if num else "color:#B0AEBD;text-align:center")
+
+            _hc = st.columns([0.7, 1.4, 1.6, 1.5, 1.0, 1.4, 1.2])
+            _hc[0].markdown(f"<div style='{_cell_label()}'>합계</div>", unsafe_allow_html=True)
+            _hc[1].markdown(f"<div style='{_cell_value()}'>—</div>", unsafe_allow_html=True)
+            _hc[2].markdown(f"<div style='{_cell_value()}'>—</div>", unsafe_allow_html=True)
+            _hc[3].markdown(f"<div style='{_cell_value(num=True)}'>{_sum_금액:,}원</div>", unsafe_allow_html=True)
+            _hc[4].markdown(f"<div style='{_cell_value(num=True)}'>{_sum_단가:,}원</div>", unsafe_allow_html=True)
+            _hc[5].markdown(f"<div style='{_cell_value(num=True)}'>{_sum_고객:,}원</div>", unsafe_allow_html=True)
+            _hc[6].markdown(f"<div style='{_cell_value()}'>—</div>", unsafe_allow_html=True)
+
             edited = st.data_editor(
                 view,
                 column_config={
