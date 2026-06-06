@@ -615,6 +615,25 @@ def _render_contract_card(c):
                 use_container_width=True,
             )
             if save_clicked:
+                # 분납회차 12회 + 1회차 청구예정일 입력된 경우 → 2~12회차 청구예정일 자동 채움 (빈 셀만)
+                try:
+                    분납_n = int(c.get("분납회차") or 0)
+                except (ValueError, TypeError):
+                    분납_n = 0
+                if 분납_n == 12 and len(edited) >= 2:
+                    edited_sorted = edited.sort_values("회차").reset_index(drop=True)
+                    first_date = edited_sorted.loc[0, "청구예정일"]
+                    if pd.notna(first_date):
+                        for i in range(1, len(edited_sorted)):
+                            if pd.isna(edited_sorted.loc[i, "청구예정일"]):
+                                edited_sorted.loc[i, "청구예정일"] = (
+                                    first_date + pd.DateOffset(months=i)
+                                )
+                        # 원래 index 순서 유지하며 edited에 반영
+                        edited = edited_sorted.set_index(
+                            pd.Index(range(len(edited_sorted)))
+                        )
+
                 changes_count = 0
                 for idx in edited.index:
                     orig = view.loc[idx]
