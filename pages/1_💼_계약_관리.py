@@ -569,13 +569,13 @@ def _render_contract_card(c):
                 <table style='width:100%;border-collapse:separate;border-spacing:4px 0;
                               table-layout:fixed;margin-bottom:4px'>
                     <colgroup>
-                        <col style='width:6.5%'>
-                        <col style='width:13.5%'>
+                        <col style='width:3.5%'>
                         <col style='width:18%'>
-                        <col style='width:17%'>
-                        <col style='width:14%'>
-                        <col style='width:16.5%'>
-                        <col style='width:10%'>
+                        <col style='width:20%'>
+                        <col style='width:11%'>
+                        <col style='width:11%'>
+                        <col style='width:11%'>
+                        <col style='width:21%'>
                         <col style='width:4.5%'>
                     </colgroup>
                     <tr>
@@ -597,7 +597,7 @@ def _render_contract_card(c):
                 view,
                 column_config={
                     "payment_id": None,
-                    "회차": st.column_config.TextColumn("회차", disabled=True, width="small"),
+                    "회차": st.column_config.TextColumn("회차", disabled=True, width=50),
                     "청구예정일": st.column_config.DateColumn(
                         "청구 예정일",
                         format="YYYY-MM-DD",
@@ -607,16 +607,19 @@ def _render_contract_card(c):
                     "금액": st.column_config.NumberColumn(
                         "매출액 (부가세포함)",
                         format="localized",
+                        width=150,
                         help="세금계산서 발행 금액",
                     ),
                     "단가": st.column_config.NumberColumn(
                         "단가",
                         format="localized",
+                        width=150,
                         help="계약 단위 단가. 어느 행이든 수정하면 저장 시 계약 단위로 반영됩니다.",
                     ),
                     "고객입금액": st.column_config.NumberColumn(
                         "고객 입금액",
                         format="localized",
+                        width=150,
                         help="실제 입금된 금액 (관세·부가세 대납 등으로 발행액과 다를 수 있음)",
                     ),
                     "입금일": st.column_config.DateColumn(
