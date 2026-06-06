@@ -519,46 +519,6 @@ else:
     total_issued = agg["단가"].sum()
     st.caption(f"누적 발행 매출: **{total_issued:,.0f}원** · {total_issued/1e8:.2f}억")
 
-# ============== 영업 파이프라인 ==============
-st.markdown("## 🎯 영업 파이프라인")
-st.markdown(
-    '<div class="sec-meta">상태별 분포 — 건수 / 매출</div>',
-    unsafe_allow_html=True,
-)
-
-state_order = ["리드", "제안", "협상", "성공", "입금완료", "정산완료", "실패"]
-state_agg = fdf.groupby("상태").agg(건수=("name", "count"), 매출=("총매출", "sum")).reset_index()
-state_agg["상태"] = pd.Categorical(state_agg["상태"], categories=state_order, ordered=True)
-state_agg = state_agg.sort_values("상태")
-
-
-def _state_chart(y_col, label):
-    fig = px.bar(
-        state_agg, x="상태", y=y_col,
-        color="상태", color_discrete_map=STATE_COLORS,
-        labels={y_col: label, "상태": ""},
-    )
-    fig.update_layout(
-        height=320,
-        margin=dict(l=0, r=0, t=10, b=0),
-        plot_bgcolor="white",
-        showlegend=False,
-        yaxis=dict(showgrid=True, gridcolor="#F0EFF5", title=""),
-        xaxis=dict(title=""),
-        font=dict(family="Pretendard, sans-serif", size=12),
-    )
-    fig.update_traces(marker_line_width=0)
-    return fig
-
-
-col_a, col_b = st.columns(2)
-with col_a:
-    st.caption("상태별 건수")
-    st.plotly_chart(_state_chart("건수", "건수"), use_container_width=True)
-with col_b:
-    st.caption("상태별 매출")
-    st.plotly_chart(_state_chart("매출", "매출 (원)"), use_container_width=True)
-
 # ============== 서비스별 매출 ==============
 st.markdown("## 💎 서비스별 매출")
 st.markdown(
