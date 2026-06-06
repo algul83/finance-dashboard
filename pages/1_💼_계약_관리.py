@@ -541,17 +541,20 @@ def _render_contract_card(c):
             def _cell_label():
                 return (
                     "background:#F1EEFB;color:#4A35B0;font-weight:700;"
-                    "padding:8px 10px;border-radius:6px;text-align:center;font-size:0.82rem;"
+                    "padding:8px 6px;border-radius:6px;text-align:center;font-size:0.8rem;"
+                    "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
                 )
 
             def _cell_value(num=False):
                 base = (
-                    "background:#FAFAFC;color:#1E1B2E;padding:8px 10px;"
-                    "border-radius:6px;font-size:0.86rem;"
+                    "background:#FAFAFC;color:#1E1B2E;padding:8px 6px;"
+                    "border-radius:6px;font-size:0.78rem;"
+                    "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
                 )
                 return base + ("font-weight:700;text-align:right" if num else "color:#B0AEBD;text-align:center")
 
-            _hc = st.columns([0.7, 1.4, 1.6, 1.5, 1.0, 1.4, 1.2])
+            # 단가·고객입금액·매출액에 더 넓은 폭 부여 (큰 숫자 한 줄 표시 보장)
+            _hc = st.columns([0.7, 1.3, 1.6, 1.7, 1.5, 1.7, 1.1])
             _hc[0].markdown(f"<div style='{_cell_label()}'>합계</div>", unsafe_allow_html=True)
             _hc[1].markdown(f"<div style='{_cell_value()}'>—</div>", unsafe_allow_html=True)
             _hc[2].markdown(f"<div style='{_cell_value()}'>—</div>", unsafe_allow_html=True)
