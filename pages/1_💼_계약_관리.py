@@ -248,16 +248,40 @@ if contracts_df.empty:
     )
     st.stop()
 
-# ============== 상단 KPI ==============
-total_amount = contracts_df["총금액"].sum()
-total_paid = ct.effective_paid_amount(payments_df)
+# ============== 상단 KPI (발행일 기간 필터 적용 — 진행중 + 종료 포함) ==============
+_applied_inv_for_kpi = st.session_state.get("inv_applied")
+_kpi_contracts = contracts_df
+_kpi_payments = payments_df
+
+if _applied_inv_for_kpi and not payments_df.empty:
+    _ks, _ke = _applied_inv_for_kpi["start"], _applied_inv_for_kpi["end"]
+    _matched_kpi_cids = set(
+        payments_df[
+            payments_df["발행일"].notna()
+            & (payments_df["발행일"].dt.date >= _ks)
+            & (payments_df["발행일"].dt.date <= _ke)
+        ]["contract_id"].unique()
+    )
+    _kpi_contracts = contracts_df[contracts_df["contract_id"].isin(_matched_kpi_cids)]
+    _kpi_payments = payments_df[payments_df["contract_id"].isin(_matched_kpi_cids)]
+
+total_amount = _kpi_contracts["총금액"].sum()
+total_paid = ct.effective_paid_amount(_kpi_payments)
 total_unpaid = total_amount - total_paid
 collection_rate = (total_paid / total_amount * 100) if total_amount > 0 else 0
+
+_kpi_caption = ""
+if _applied_inv_for_kpi:
+    _kpi_caption = (
+        f"<div style='font-size:0.75rem;color:#8B8A95;margin:-8px 0 6px'>"
+        f"📅 발행일 {_applied_inv_for_kpi['start']} ~ {_applied_inv_for_kpi['end']} 기간 기준</div>"
+    )
+    st.markdown(_kpi_caption, unsafe_allow_html=True)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.markdown(
     f'<div class="kpi-box"><div class="kpi-label">전체 계약</div>'
-    f'<div class="kpi-value">{len(contracts_df)}건</div></div>',
+    f'<div class="kpi-value">{len(_kpi_contracts)}건</div></div>',
     unsafe_allow_html=True,
 )
 c2.markdown(
