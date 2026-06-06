@@ -373,7 +373,7 @@ with hdr_cols[0]:
 with hdr_cols[1]:
     period_unit = st.radio(
         "기간 단위",
-        options=["연별", "분기별", "월별", "일별"],
+        options=["연도별", "분기별", "월별", "일별"],
         index=2,
         horizontal=True,
         label_visibility="collapsed",
@@ -386,7 +386,7 @@ UNIT_MAP = {
     "일별": {"freq": "D",  "fmt": "%Y-%m-%d"},
     "월별": {"freq": "M",  "fmt": "%Y-%m"},
     "분기별": {"freq": "Q", "fmt": None},
-    "연별": {"freq": "Y",  "fmt": "%Y"},
+    "연도별": {"freq": "Y",  "fmt": "%Y"},
 }
 unit_cfg = UNIT_MAP[period_unit]
 
@@ -459,13 +459,15 @@ else:
             tickmode="array", tickvals=[1, 2, 3, 4],
             ticktext=["Q1", "Q2", "Q3", "Q4"],
         )
-    elif period_unit == "연별":
+    elif period_unit == "연도별":
         agg = billed.groupby("년도")["단가"].sum().reset_index()
         fig = px.bar(
             agg, x="년도", y="단가",
             color="년도", color_discrete_map=_color_map,
             labels={"단가": "", "년도": ""},
         )
+        # x축에 연도(category)만 표기 — 추가 축선·tick 마크 없이
+        fig.update_xaxes(type="category")
     else:  # 일별
         billed["일"] = billed["발행일"].dt.date
         agg = billed.groupby("일")["단가"].sum().reset_index()
@@ -486,7 +488,7 @@ else:
         margin=dict(l=20, r=20, t=50, b=20),
         font=dict(family="Pretendard, Malgun Gothic, 맑은 고딕, sans-serif",
                   size=12, color="#374151"),
-        showlegend=(period_unit in ("월별", "분기별", "연별")),
+        showlegend=(period_unit in ("월별", "분기별", "연도별")),
         legend=dict(
             orientation="h", yanchor="bottom", y=1.02,
             x=0, xanchor="left",
