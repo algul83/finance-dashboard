@@ -636,7 +636,7 @@ def _render_contract_card(c):
             view["결제방법"] = pd.Series([_결제방법_val] * len(view), index=view.index)
             # 컬럼 순서 재정렬: 발행일 → 결제방법, 매출액 → 단가
             view = view[[
-                "payment_id", "회차", "청구예정일", "발행일", "결제방법",
+                "payment_id", "회차", "결제방법", "청구예정일", "발행일",
                 "금액", "단가", "고객입금액", "입금일",
             ]]
             # 해외대조약은 고객입금액 공란 유지 (수기 입력)
@@ -668,9 +668,9 @@ def _render_contract_card(c):
                               table-layout:fixed;margin-bottom:4px;width:auto'>
                     <colgroup>
                         <col style='width:50px'>
-                        <col style='width:150px'>
-                        <col style='width:150px'>
                         <col style='width:130px'>
+                        <col style='width:150px'>
+                        <col style='width:150px'>
                         <col style='width:150px'>
                         <col style='width:150px'>
                         <col style='width:150px'>
