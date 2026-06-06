@@ -675,13 +675,25 @@ def _render_contract_card(c):
             )
 
             # 합계 row 안의 모든 셀(selectbox 포함)을 같은 라인에 정렬
+            # — selectbox가 있는 row의 stColumn을 stretch + 컨텐츠를 vertical-center
             st.markdown(
                 """
                 <style>
-                div[data-testid="stHorizontalBlock"] div[data-testid="stSelectbox"] {
-                    margin: 0 !important;
+                div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSelectbox"])
+                    > div[data-testid="stColumn"] {
+                    align-self: stretch !important;
+                    display: flex !important;
+                    align-items: center !important;
                 }
-                div[data-testid="stHorizontalBlock"] div[data-testid="stSelectbox"] > div {
+                div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSelectbox"])
+                    > div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
+                    width: 100% !important;
+                    gap: 0 !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSelectbox"])
+                    [data-testid="stMarkdownContainer"],
+                div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSelectbox"])
+                    [data-testid="stSelectbox"] {
                     margin: 0 !important;
                 }
                 </style>
