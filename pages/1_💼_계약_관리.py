@@ -804,6 +804,8 @@ def _render_contract_card(c):
                 use_container_width=True,
             )
             if save_clicked:
+                contract_changes = []
+
                 # 단가 컬럼: 어느 row든 변경되면 계약 단위로 반영
                 orig_단가 = int(c.get("단가") or 0)
                 edited_단가 = pd.to_numeric(edited["단가"], errors="coerce").fillna(0).astype(int)
@@ -811,6 +813,7 @@ def _render_contract_card(c):
                 if len(new_단가_vals) > 0:
                     new_단가 = int(new_단가_vals[0])
                     ct.update_contract_meta(contract_id, 단가=new_단가 if new_단가 > 0 else "")
+                    contract_changes.append("단가")
 
                 # 결제방법 컬럼: 어느 row든 변경되면 계약 단위로 반영
                 orig_결제 = str(c.get("결제방법") or "").strip()
@@ -819,6 +822,7 @@ def _render_contract_card(c):
                 if len(new_결제_vals) > 0:
                     new_결제 = str(new_결제_vals[0]).strip()
                     ct.update_contract_meta(contract_id, 결제방법=new_결제)
+                    contract_changes.append("결제방법")
 
                 # 분납회차 12회 + 1회차 청구예정일 입력된 경우 → 2~12회차 청구예정일 자동 채움 (빈 셀만)
                 try:
@@ -859,8 +863,13 @@ def _render_contract_card(c):
                     if diffs:
                         ct.update_payment_fields(pid, **diffs)
                         changes_count += 1
-                if changes_count:
-                    st.success(f"✅ {changes_count}개 회차 변경 저장 완료")
+                if changes_count or contract_changes:
+                    msg_parts = []
+                    if changes_count:
+                        msg_parts.append(f"회차 {changes_count}개")
+                    if contract_changes:
+                        msg_parts.append(f"계약 메타({', '.join(contract_changes)})")
+                    st.success(f"✅ {' + '.join(msg_parts)} 변경 저장 완료")
                     # 저장 후 카드 접기
                     st.session_state[f"expand_{contract_id}"] = False
                     st.rerun()
