@@ -665,11 +665,18 @@ def _render_contract_card(c):
             # 50 / 150+150+130=430 / 150 / 150 / 150 / 150
             _h_cols = st.columns([0.5, 4.3, 1.5, 1.5, 1.5, 1.5])
 
+            # selectbox 높이(~38px)와 맞추기 위해 markdown 셀을 flex로 고정 높이 적용
+            _cell_h = 38
+            _flex_base = (
+                f"height:{_cell_h}px;display:flex;align-items:center;"
+                "padding:0 12px;border-radius:6px;font-size:0.78rem;white-space:nowrap;"
+                "overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;"
+            )
+
             with _h_cols[0]:
                 st.markdown(
-                    "<div style='background:#F1EEFB;color:#4A35B0;font-weight:700;"
-                    "text-align:center;padding:8px 6px;border-radius:6px;"
-                    "font-size:0.8rem;margin-bottom:4px'>합계</div>",
+                    f"<div style='background:#F1EEFB;color:#4A35B0;font-weight:700;"
+                    f"justify-content:center;font-size:0.8rem;{_flex_base}'>합계</div>",
                     unsafe_allow_html=True,
                 )
 
@@ -685,9 +692,8 @@ def _render_contract_card(c):
                 )
 
             _num_cell_style = (
-                "background:#FAFAFC;color:#1E1B2E;font-weight:700;text-align:right;"
-                "padding:8px 6px;border-radius:6px;font-size:0.78rem;white-space:nowrap;"
-                "overflow:hidden;text-overflow:ellipsis;margin-bottom:4px"
+                "background:#FAFAFC;color:#1E1B2E;font-weight:700;"
+                "justify-content:flex-end;" + _flex_base
             )
             for _i, _v in enumerate([_sum_금액, _sum_단가, _sum_고객]):
                 with _h_cols[_i + 2]:
