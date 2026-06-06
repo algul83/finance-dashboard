@@ -493,7 +493,7 @@ def _render_contract_card(c):
         if contract_payments.empty:
             st.caption("등록된 결제 회차가 없습니다. ⚙️ 계약 메타에서 분납 회차를 입력하거나 ➕ 회차 추가로 등록하세요.")
         else:
-            # 표시용 view: 회차·청구예정일·발행일·금액·고객입금액·입금일
+            # 표시용 view: 회차·청구예정일·발행일·금액·단가·고객입금액·입금일
             view = contract_payments.sort_values("회차")[[
                 "payment_id", "회차", "청구예정일", "발행일", "금액", "고객입금액", "입금일",
             ]].copy()
@@ -502,6 +502,13 @@ def _render_contract_card(c):
                 view[col] = pd.to_datetime(view[col], errors="coerce")
             view["금액"] = view["금액"].astype(float).round().astype("Int64")
             view["고객입금액"] = view["고객입금액"].astype(float).round().astype("Int64")
+            # 계약 단위 단가를 모든 회차 row에 동일 값으로 표시 (read-only)
+            view["단가"] = pd.to_numeric(c.get("단가", 0), errors="coerce")
+            view["단가"] = view["단가"].fillna(0).astype(float).round().astype("Int64")
+            # 컬럼 순서 재정렬: 매출액(금액) 우측에 단가
+            view = view[[
+                "payment_id", "회차", "청구예정일", "발행일", "금액", "단가", "고객입금액", "입금일",
+            ]]
             # 해외대조약은 고객입금액 공란 유지 (수기 입력)
             # 그 외 서비스만 0 → 금액 fallback (기존 0 데이터 호환)
             if not ct.is_overseas(c.get("서비스명")):
@@ -524,6 +531,12 @@ def _render_contract_card(c):
                         "매출액 (부가세포함)",
                         format="localized",
                         help="세금계산서 발행 금액",
+                    ),
+                    "단가": st.column_config.NumberColumn(
+                        "단가",
+                        format="localized",
+                        disabled=True,
+                        help="계약 단위 단가 (계약 메타 수정에서 변경)",
                     ),
                     "고객입금액": st.column_config.NumberColumn(
                         "고객 입금액",
@@ -560,6 +573,12 @@ def _render_contract_card(c):
                         value=int(c["분납회차"]) if pd.notna(c["분납회차"]) else 0,
                         key=f"분납_{contract_id}",
                     )
+                    new_단가 = st.number_input(
+                        "단가 (단위당 가격)",
+                        min_value=0, step=10000,
+                        value=int(c["단가"]) if pd.notna(c.get("단가")) and c["단가"] else 0,
+                        key=f"단가_{contract_id}",
+                    )
                     new_구독시작 = st.date_input(
                         "구독 시작일",
                         value=c["구독시작일"].date() if pd.notna(c["구독시작일"]) else None,
@@ -575,6 +594,7 @@ def _render_contract_card(c):
                         ct.update_contract_meta(
                             contract_id,
                             분납회차=new_분납 if new_분납 > 0 else "",
+                            단가=new_단가 if new_단가 > 0 else "",
                             구독시작일=new_구독시작,
                             구독종료일=new_구독종료,
                             메모=new_메모,

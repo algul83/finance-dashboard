@@ -19,6 +19,7 @@ CONTRACT_COLUMNS = [
     "신규갱신",          # 일회성/신규/갱신
     "계약일",            # YYYY-MM-DD
     "총금액",
+    "단가",              # 단위당 가격 (수동 입력)
     "정산유형",          # 1회정산/매월정산/분할정산
     "분납회차",          # 분할정산: 2 또는 3 (수동 입력)
     "구독시작일",
@@ -64,6 +65,7 @@ def load_contracts() -> pd.DataFrame:
         return pd.DataFrame(columns=CONTRACT_COLUMNS)
     df = pd.DataFrame(data)
     df["총금액"] = pd.to_numeric(df.get("총금액", 0), errors="coerce").fillna(0)
+    df["단가"] = pd.to_numeric(df.get("단가", 0), errors="coerce").fillna(0)
     df["분납회차"] = pd.to_numeric(df.get("분납회차", ""), errors="coerce")
     for c in ("계약일", "구독시작일", "구독종료일"):
         if c in df.columns:
@@ -163,6 +165,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                 if pd.notna(n.get("계약일")) else ""
             ),
             "총금액": total,
+            "단가": "",  # 수동 입력 — 신규 동기화 시 빈 셀
             "정산유형": n.get("정산유형") or "",
             "분납회차": 분납_int if 분납_int > 0 else "",
             # 노션 계약일(date range)의 start → 구독시작일, end → 구독종료일
