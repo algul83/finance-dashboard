@@ -59,6 +59,14 @@ def _prop(row: dict, name: str):
     return None
 
 
+def _prop_date_end(row: dict, name: str):
+    """노션 date 속성의 종료일(end)만 추출. 단일 날짜는 None 반환."""
+    p = row["properties"].get(name, {})
+    if p.get("type") != "date" or not p.get("date"):
+        return None
+    return p["date"].get("end")
+
+
 @st.cache_data(ttl=600, show_spinner="영업현황 DB 불러오는 중...")
 def load_sales_data() -> pd.DataFrame:
     """Notion 영업현황 DB 전체 페이지 → 정규화된 DataFrame.
@@ -92,7 +100,8 @@ def load_sales_data() -> pd.DataFrame:
                         "분납회차": _prop(r, "분납회차"),  # select: '1회'/'3회'/'12회'
                         "총매출": _prop(r, "총 매출금액(부가세포함)") or 0,
                         "우선순위": _prop(r, "우선순위"),
-                        "계약일": _prop(r, "계약일"),
+                        "계약일": _prop(r, "계약일"),  # date range의 start (계약 시작일)
+                        "계약종료일": _prop_date_end(r, "계약일"),  # date range의 end (계약 종료일)
                         "세금계산서발행일": _prop(r, "세금계산서 발행 일"),
                         "입금완료": _prop(r, "입금완료 여부"),
                         "비고": _prop(r, "비고"),
@@ -121,7 +130,7 @@ def load_sales_data() -> pd.DataFrame:
     if df.empty:
         return df
     # 날짜 컬럼 datetime 변환
-    for c in ("계약일", "세금계산서발행일"):
+    for c in ("계약일", "계약종료일", "세금계산서발행일"):
         df[c] = pd.to_datetime(df[c], errors="coerce")
     df["입금완료"] = df["입금완료"].fillna(False).astype(bool)
     df["총매출"] = pd.to_numeric(df["총매출"], errors="coerce").fillna(0)

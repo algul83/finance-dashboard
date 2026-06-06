@@ -165,8 +165,15 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             "총금액": total,
             "정산유형": n.get("정산유형") or "",
             "분납회차": 분납_int if 분납_int > 0 else "",
-            "구독시작일": "",
-            "구독종료일": "",
+            # 노션 계약일(date range)의 start → 구독시작일, end → 구독종료일
+            "구독시작일": (
+                n["계약일"].strftime("%Y-%m-%d")
+                if pd.notna(n.get("계약일")) else ""
+            ),
+            "구독종료일": (
+                n["계약종료일"].strftime("%Y-%m-%d")
+                if pd.notna(n.get("계약종료일")) else ""
+            ),
             "메모": "",
             "created_at": now.strftime("%Y-%m-%d %H:%M"),
             "updated_at": now.strftime("%Y-%m-%d %H:%M"),
@@ -325,6 +332,9 @@ def resync_meta_from_notion(notion_df: pd.DataFrame) -> int:
         "정산유형": ("정산유형", lambda v: v or ""),
         "계약일": ("계약일", lambda v: v.strftime("%Y-%m-%d") if pd.notna(v) else ""),
         "총금액": ("총매출", lambda v: float(v or 0)),
+        # 노션 계약일(date range)의 start/end → 구독시작/종료일
+        "구독시작일": ("계약일", lambda v: v.strftime("%Y-%m-%d") if pd.notna(v) else ""),
+        "구독종료일": ("계약종료일", lambda v: v.strftime("%Y-%m-%d") if pd.notna(v) else ""),
     }
 
     batch = []
