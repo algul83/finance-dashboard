@@ -398,11 +398,21 @@ if search_query and customer_contracts.empty:
     st.warning(f"'{search_query}'과(와) 일치하는 계약이 없습니다.")
 
 # ============== 진행중 / 종료 분리 ==============
+# 일회성 계약은 구독종료일이 없으므로 구독시작일 기준으로 종료 판단,
+# 신규/갱신 등 구독형 계약은 구독종료일 기준.
 _today = pd.Timestamp.today().normalize()
-_ended_mask = (
-    customer_contracts["구독종료일"].notna()
+_is_onetime = customer_contracts["신규갱신"].astype(str).str.strip() == "일회성"
+_ended_subscription = (
+    ~_is_onetime
+    & customer_contracts["구독종료일"].notna()
     & (customer_contracts["구독종료일"] < _today)
 )
+_ended_onetime = (
+    _is_onetime
+    & customer_contracts["구독시작일"].notna()
+    & (customer_contracts["구독시작일"] < _today)
+)
+_ended_mask = _ended_subscription | _ended_onetime
 _active_contracts = customer_contracts[~_ended_mask]
 _ended_contracts = customer_contracts[_ended_mask]
 
