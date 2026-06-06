@@ -208,15 +208,32 @@ if not pay.empty:
 else:
     unpaid_all = pd.DataFrame()
 
-# 발행 누락: 청구예정일 ≤ 오늘 / 발행일 미입력
+# 발행 누락:
+#  (1) 청구예정일 ≤ 오늘 + 발행일 미입력 — 명시적 누락
+#  (2) 계약일 ≤ 오늘 + 청구예정일 빈 + 발행일 빈 — 청구예정일조차 안 정한 catch-all
 if not pay.empty:
-    overdue_all = pay[
+    _missing_dates = pay["청구예정일"].isna() & pay["발행일"].isna()
+
+    cond_explicit = (
         pay["청구예정일"].notna()
         & (pay["청구예정일"] <= _today)
-        & (pay["발행일"].isna())
-    ].copy()
+        & pay["발행일"].isna()
+    )
+    cond_fallback = (
+        pay["계약일"].notna()
+        & (pay["계약일"] <= _today)
+        & _missing_dates
+    )
+
+    overdue_all = pay[cond_explicit | cond_fallback].copy()
     if not overdue_all.empty:
-        overdue_all["경과일"] = (_today - overdue_all["청구예정일"]).dt.days
+        # 기준일: 청구예정일 있으면 그것, 아니면 계약일로 fallback
+        _ref_date = overdue_all["청구예정일"].fillna(overdue_all["계약일"])
+        overdue_all["기준일"] = _ref_date
+        overdue_all["기준"] = overdue_all["청구예정일"].apply(
+            lambda x: "청구예정" if pd.notna(x) else "계약일"
+        )
+        overdue_all["경과일"] = (_today - _ref_date).dt.days
 else:
     overdue_all = pd.DataFrame()
 
@@ -320,7 +337,7 @@ else:
 # ============== 세금계산서 발행 누락 ==============
 st.markdown("## 📝 세금계산서 발행 누락")
 st.markdown(
-    '<div class="sec-meta">청구예정일 ≤ 오늘 · 발행일 미입력 — 경과일 내림차순</div>',
+    '<div class="sec-meta">청구예정일 ≤ 오늘 · 발행일 미입력 (청구예정일이 비어있는 경우 계약일 fallback) — 경과일 내림차순</div>',
     unsafe_allow_html=True,
 )
 
@@ -330,14 +347,19 @@ elif overdue_issue.empty:
     st.info(f"'{search_query}' 검색 결과 없음 (전체 발행 누락 {len(overdue_all)}회차).")
 else:
     view = overdue_issue[[
-        "청구예정일", "경과일", "고객기관", "건명", "회차", "금액", "메모",
+        "기준일", "기준", "경과일", "고객기관", "건명", "회차", "금액", "메모",
     ]].copy()
     view = view.sort_values("경과일", ascending=False, na_position="last").reset_index(drop=True)
     st.dataframe(
         view,
         column_config={
-            "청구예정일": st.column_config.DateColumn("청구예정일", format="YYYY-MM-DD"),
-            "경과일": st.column_config.NumberColumn("경과일", format="%d일", help="today − 청구예정일"),
+            "기준일": st.column_config.DateColumn("기준일", format="YYYY-MM-DD"),
+            "기준": st.column_config.TextColumn(
+                "기준",
+                width="small",
+                help="청구예정 = 청구예정일 / 계약일 = 청구예정일 미설정 시 계약일 fallback",
+            ),
+            "경과일": st.column_config.NumberColumn("경과일", format="%d일", help="today − 기준일"),
             "고객기관": st.column_config.TextColumn("고객기관"),
             "건명": st.column_config.TextColumn("건명"),
             "회차": st.column_config.TextColumn("회차", width="small"),
