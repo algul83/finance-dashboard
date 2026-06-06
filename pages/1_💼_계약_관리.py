@@ -371,8 +371,8 @@ if not _issued.empty:
 
     applied_inv_filter = st.session_state.get("inv_applied")
 
-# ----- 상태 필터 (세금계산서 발행 · 입금) -----
-fc1, fc2 = st.columns(2)
+# ----- 상태 필터 (세금계산서 발행 · 입금 · 결제방법) -----
+fc1, fc2, fc3 = st.columns(3)
 issue_filter = fc1.multiselect(
     "세금계산서 발행",
     options=["발행 완료", "부분 발행", "미발행"],
@@ -386,6 +386,13 @@ paid_filter = fc2.multiselect(
     default=[],
     placeholder="전체 (필터 없음)",
     help="회차 단위로 집계: 전부 완료 / 일부 완료 / 전혀 미완료",
+)
+method_filter = fc3.multiselect(
+    "결제 방법",
+    options=ct.PAYMENT_METHODS,
+    default=[],
+    placeholder="전체 (필터 없음)",
+    help="계약 단위 결제 방법 (세금계산서·계산서·카드결제)",
 )
 
 search_query = st.session_state.get("contract_search", "").strip()
@@ -432,7 +439,7 @@ def _paid_state(cid: str) -> str | None:
     return "부분 입금"
 
 
-if (issue_filter or paid_filter) and not customer_contracts.empty:
+if (issue_filter or paid_filter or method_filter) and not customer_contracts.empty:
     mask = pd.Series(True, index=customer_contracts.index)
     if issue_filter:
         states = customer_contracts["contract_id"].apply(_issue_state)
@@ -440,6 +447,10 @@ if (issue_filter or paid_filter) and not customer_contracts.empty:
     if paid_filter:
         states = customer_contracts["contract_id"].apply(_paid_state)
         mask &= states.isin(paid_filter)
+    if method_filter:
+        mask &= (
+            customer_contracts["결제방법"].fillna("").astype(str).str.strip().isin(method_filter)
+        )
     customer_contracts = customer_contracts[mask]
 
 # 발행일 기간 필터 — 적용된 경우 해당 범위에 발행일이 있는 회차를 가진 계약만 통과
