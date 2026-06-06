@@ -155,7 +155,7 @@ st.markdown(
 # ============== Sync 영역 ==============
 st.sidebar.header("🔧 작업")
 
-if st.sidebar.button("🔄 Notion에서 신규 성사 건 가져오기", use_container_width=True):
+if st.sidebar.button("🔄 신규 데이터 수집", use_container_width=True):
     with st.spinner("Notion 영업현황 조회 중..."):
         try:
             notion_df = load_sales_data()
@@ -244,7 +244,7 @@ except Exception as e:
 if contracts_df.empty:
     st.info(
         "👋 아직 등록된 계약이 없습니다. 좌측 사이드바의 "
-        "**'Notion에서 신규 성사 건 가져오기'** 버튼을 눌러 동기화하세요."
+        "**'신규 데이터 수집'** 버튼을 눌러 동기화하세요."
     )
     st.stop()
 
