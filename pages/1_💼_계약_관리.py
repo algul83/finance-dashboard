@@ -535,8 +535,7 @@ def _render_contract_card(c):
                     "단가": st.column_config.NumberColumn(
                         "단가",
                         format="localized",
-                        disabled=True,
-                        help="계약 단위 단가 (계약 메타 수정에서 변경)",
+                        help="계약 단위 단가. 어느 행이든 수정하면 저장 시 계약 단위로 반영됩니다.",
                     ),
                     "고객입금액": st.column_config.NumberColumn(
                         "고객 입금액",
@@ -615,6 +614,14 @@ def _render_contract_card(c):
                 use_container_width=True,
             )
             if save_clicked:
+                # 단가 컬럼: 어느 row든 변경되면 계약 단위로 반영
+                orig_단가 = int(c.get("단가") or 0)
+                edited_단가 = pd.to_numeric(edited["단가"], errors="coerce").fillna(0).astype(int)
+                new_단가_vals = edited_단가[edited_단가 != orig_단가].unique()
+                if len(new_단가_vals) > 0:
+                    new_단가 = int(new_단가_vals[0])
+                    ct.update_contract_meta(contract_id, 단가=new_단가 if new_단가 > 0 else "")
+
                 # 분납회차 12회 + 1회차 청구예정일 입력된 경우 → 2~12회차 청구예정일 자동 채움 (빈 셀만)
                 try:
                     분납_n = int(c.get("분납회차") or 0)
