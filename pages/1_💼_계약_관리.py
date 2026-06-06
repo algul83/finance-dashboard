@@ -668,8 +668,13 @@ def _render_contract_card(c):
                 _단가_val = 0
             view["단가"] = pd.Series([_단가_val] * len(view), dtype="Int64", index=view.index)
             # 계약 단위 결제방법을 모든 회차 row에 동일 값으로 표시
+            # 명시적 object dtype Series로 생성 — data_editor edit-apply 경로의 dtype 충돌 방지
             _결제방법_val = str(c.get("결제방법") or "").strip()
-            view["결제방법"] = pd.Series([_결제방법_val] * len(view), index=view.index)
+            view["결제방법"] = pd.Series(
+                [_결제방법_val] * len(view),
+                dtype="object",
+                index=view.index,
+            )
             # 컬럼 순서 재정렬: 발행일 → 결제방법, 매출액 → 단가
             view = view[[
                 "payment_id", "회차", "청구예정일", "발행일", "결제방법",
