@@ -397,8 +397,23 @@ if search_query:
 if search_query and customer_contracts.empty:
     st.warning(f"'{search_query}'과(와) 일치하는 계약이 없습니다.")
 
-# ============== 계약 카드 렌더링 ==============
-for _, c in customer_contracts.iterrows():
+# ============== 진행중 / 종료 분리 ==============
+_today = pd.Timestamp.today().normalize()
+_ended_mask = (
+    customer_contracts["구독종료일"].notna()
+    & (customer_contracts["구독종료일"] < _today)
+)
+_active_contracts = customer_contracts[~_ended_mask]
+_ended_contracts = customer_contracts[_ended_mask]
+
+_tab_active, _tab_ended = st.tabs([
+    f"📂 진행 중 ({len(_active_contracts)}건)",
+    f"🗂️ 종료 ({len(_ended_contracts)}건)",
+])
+
+
+def _render_contract_card(c):
+    """단일 계약 카드 렌더링 — 진행중/종료 탭에서 공통 사용."""
     contract_id = c["contract_id"]
     contract_payments = payments_df[payments_df["contract_id"] == contract_id] if not payments_df.empty else pd.DataFrame()
     paid_amount = ct.effective_paid_amount(contract_payments)
@@ -591,6 +606,21 @@ for _, c in customer_contracts.iterrows():
 
         if c.get("메모"):
             st.caption(f"📝 메모: {c['메모']}")
+
+
+with _tab_active:
+    if _active_contracts.empty:
+        st.info("진행 중인 계약이 없습니다.")
+    else:
+        for _, c in _active_contracts.iterrows():
+            _render_contract_card(c)
+
+with _tab_ended:
+    if _ended_contracts.empty:
+        st.info("종료된 계약이 없습니다.")
+    else:
+        for _, c in _ended_contracts.iterrows():
+            _render_contract_card(c)
 
 # ============== 푸터 ==============
 st.markdown("---")
