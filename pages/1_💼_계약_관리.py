@@ -691,6 +691,38 @@ def _render_contract_card(c):
                 unsafe_allow_html=True,
             )
 
+            # 결제방법 일괄 적용 — 합계 위에 한 줄로
+            _bm_cols = st.columns([1, 2, 1, 5])
+            with _bm_cols[0]:
+                st.markdown(
+                    "<div style='margin-top:6px;font-size:0.82rem;font-weight:700;"
+                    f"color:{PRIMARY_DARK}'>💳 결제방법 일괄</div>",
+                    unsafe_allow_html=True,
+                )
+            with _bm_cols[1]:
+                _curr_method = str(c.get("결제방법") or "").strip()
+                _options_bulk = ["(선택)"] + ct.PAYMENT_METHODS
+                _bulk_idx = (
+                    _options_bulk.index(_curr_method)
+                    if _curr_method in _options_bulk else 0
+                )
+                _bulk_method = st.selectbox(
+                    "일괄 적용",
+                    options=_options_bulk,
+                    index=_bulk_idx,
+                    key=f"bulk_method_sel_{contract_id}",
+                    label_visibility="collapsed",
+                )
+            with _bm_cols[2]:
+                if st.button(
+                    "일괄 적용",
+                    key=f"bulk_method_apply_{contract_id}",
+                    use_container_width=True,
+                ):
+                    if _bulk_method != "(선택)":
+                        ct.update_contract_meta(contract_id, 결제방법=_bulk_method)
+                        st.rerun()
+
             edited = st.data_editor(
                 view,
                 column_config={
