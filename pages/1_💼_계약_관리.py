@@ -646,50 +646,57 @@ def _render_contract_card(c):
             else:
                 view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
 
-            # 합계 strip — HTML 테이블 + colgroup 명시 폭으로 data_editor 컬럼과 정렬
+            # 합계 strip — st.columns 기반 (병합된 영역에 결제방법 일괄 셀렉트박스)
             _sum_금액 = int(view["금액"].fillna(0).sum())
             _sum_단가 = int(pd.to_numeric(view["단가"], errors="coerce").fillna(0).sum())
             _sum_고객 = int(pd.to_numeric(view["고객입금액"], errors="coerce").fillna(0).sum())
 
-            _td_base = (
-                "padding:8px 6px;border-radius:6px;font-size:0.78rem;"
-                "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
-            )
-            _td_label = (
-                "background:#F1EEFB;color:#4A35B0;font-weight:700;text-align:center;"
-                "font-size:0.8rem;" + _td_base
-            )
-            _td_num = "background:#FAFAFC;color:#1E1B2E;font-weight:700;text-align:right;" + _td_base
+            def _bulk_apply_method():
+                val = st.session_state.get(f"bulk_pm_{contract_id}", "(미선택)")
+                new_val = "" if val == "(미선택)" else val
+                ct.update_contract_meta(contract_id, 결제방법=new_val)
+                st.rerun()
 
-            # 픽셀 폭으로 data_editor 컬럼과 정확히 정렬
-            st.markdown(
-                f"""
-                <table style='border-collapse:separate;border-spacing:4px 0;
-                              table-layout:fixed;margin-bottom:4px;width:auto'>
-                    <colgroup>
-                        <col style='width:50px'>
-                        <col style='width:150px'>
-                        <col style='width:150px'>
-                        <col style='width:130px'>
-                        <col style='width:150px'>
-                        <col style='width:150px'>
-                        <col style='width:150px'>
-                        <col style='width:150px'>
-                    </colgroup>
-                    <tr>
-                        <td style='{_td_label}'>합계</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td style='{_td_num}'>{_sum_금액:,}원</td>
-                        <td style='{_td_num}'>{_sum_단가:,}원</td>
-                        <td style='{_td_num}'>{_sum_고객:,}원</td>
-                        <td></td>
-                    </tr>
-                </table>
-                """,
-                unsafe_allow_html=True,
+            _curr_method = str(c.get("결제방법") or "").strip()
+            _options_pm = ["(미선택)"] + ct.PAYMENT_METHODS
+            _idx_pm = _options_pm.index(_curr_method) if _curr_method in _options_pm else 0
+
+            # 폭 비율 — data_editor의 픽셀 폭과 매칭
+            # 50 / 150+150+130=430 / 150 / 150 / 150 / 150
+            _h_cols = st.columns([0.5, 4.3, 1.5, 1.5, 1.5, 1.5])
+
+            with _h_cols[0]:
+                st.markdown(
+                    "<div style='background:#F1EEFB;color:#4A35B0;font-weight:700;"
+                    "text-align:center;padding:8px 6px;border-radius:6px;"
+                    "font-size:0.8rem;margin-bottom:4px'>합계</div>",
+                    unsafe_allow_html=True,
+                )
+
+            with _h_cols[1]:
+                st.selectbox(
+                    "결제방법 일괄",
+                    options=_options_pm,
+                    index=_idx_pm,
+                    key=f"bulk_pm_{contract_id}",
+                    on_change=_bulk_apply_method,
+                    label_visibility="collapsed",
+                    help="선택 시 모든 회차에 일괄 적용",
+                )
+
+            _num_cell_style = (
+                "background:#FAFAFC;color:#1E1B2E;font-weight:700;text-align:right;"
+                "padding:8px 6px;border-radius:6px;font-size:0.78rem;white-space:nowrap;"
+                "overflow:hidden;text-overflow:ellipsis;margin-bottom:4px"
             )
+            for _i, _v in enumerate([_sum_금액, _sum_단가, _sum_고객]):
+                with _h_cols[_i + 2]:
+                    st.markdown(
+                        f"<div style='{_num_cell_style}'>{_v:,}원</div>",
+                        unsafe_allow_html=True,
+                    )
+            with _h_cols[5]:
+                pass  # 입금일 빈 자리
 
             edited = st.data_editor(
                 view,
@@ -739,7 +746,7 @@ def _render_contract_card(c):
                     ),
                 },
                 hide_index=True,
-                use_container_width=False,
+                use_container_width=True,
                 num_rows="fixed",
                 key=f"editor_{contract_id}",
             )
