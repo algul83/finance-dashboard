@@ -558,12 +558,14 @@ if not nr_agg.empty:
 st.markdown("## 💳 정산유형별")
 st.markdown('<div class="sec-meta">확정 건 — 건수 / 매출</div>', unsafe_allow_html=True)
 
+# groupby 후 fillna하면 pandas 내부 dtype assertion이 터질 수 있어 사전에 채움
+_confirmed_st = confirmed.copy()
+_confirmed_st["정산유형"] = _confirmed_st["정산유형"].fillna("(미입력)").astype(str)
 st_agg = (
-    confirmed.groupby("정산유형", dropna=False)
+    _confirmed_st.groupby("정산유형")
     .agg(건수=("name", "count"), 매출=("총매출", "sum"))
     .reset_index()
 )
-st_agg["정산유형"] = st_agg["정산유형"].fillna("(미입력)")
 st.dataframe(
     st_agg.sort_values("건수", ascending=False).reset_index(drop=True),
     column_config={
