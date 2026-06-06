@@ -561,31 +561,29 @@ def _render_contract_card(c):
                 "background:#F1EEFB;color:#4A35B0;font-weight:700;text-align:center;"
                 "font-size:0.8rem;" + _td_base
             )
-            _td_muted = "background:#FAFAFC;color:#B0AEBD;text-align:center;" + _td_base
             _td_num = "background:#FAFAFC;color:#1E1B2E;font-weight:700;text-align:right;" + _td_base
 
+            # 픽셀 폭으로 data_editor 컬럼과 정확히 정렬
             st.markdown(
                 f"""
-                <table style='width:100%;border-collapse:separate;border-spacing:4px 0;
-                              table-layout:fixed;margin-bottom:4px'>
+                <table style='border-collapse:separate;border-spacing:4px 0;
+                              table-layout:fixed;margin-bottom:4px;width:auto'>
                     <colgroup>
-                        <col style='width:5%'>
-                        <col style='width:15%'>
-                        <col style='width:15%'>
-                        <col style='width:15%'>
-                        <col style='width:15%'>
-                        <col style='width:15%'>
-                        <col style='width:15%'>
-                        <col style='width:5%'>
+                        <col style='width:50px'>
+                        <col style='width:150px'>
+                        <col style='width:150px'>
+                        <col style='width:150px'>
+                        <col style='width:150px'>
+                        <col style='width:150px'>
+                        <col style='width:150px'>
                     </colgroup>
                     <tr>
                         <td style='{_td_label}'>합계</td>
-                        <td style='{_td_muted}'>—</td>
-                        <td style='{_td_muted}'>—</td>
+                        <td></td>
+                        <td></td>
                         <td style='{_td_num}'>{_sum_금액:,}원</td>
                         <td style='{_td_num}'>{_sum_단가:,}원</td>
                         <td style='{_td_num}'>{_sum_고객:,}원</td>
-                        <td style='{_td_muted}'>—</td>
                         <td></td>
                     </tr>
                 </table>
@@ -635,7 +633,7 @@ def _render_contract_card(c):
                     ),
                 },
                 hide_index=True,
-                use_container_width=True,
+                use_container_width=False,
                 num_rows="fixed",
                 key=f"editor_{contract_id}",
             )
