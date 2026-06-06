@@ -389,10 +389,10 @@ paid_filter = fc2.multiselect(
 )
 method_filter = fc3.multiselect(
     "결제 방법",
-    options=ct.PAYMENT_METHODS,
+    options=ct.PAYMENT_METHODS + ["미입력"],
     default=[],
     placeholder="전체 (필터 없음)",
-    help="계약 단위 결제 방법 (세금계산서·계산서·카드결제)",
+    help="계약 단위 결제 방법 (세금계산서·계산서·카드결제, 미입력)",
 )
 
 search_query = st.session_state.get("contract_search", "").strip()
@@ -448,8 +448,10 @@ if (issue_filter or paid_filter or method_filter) and not customer_contracts.emp
         states = customer_contracts["contract_id"].apply(_paid_state)
         mask &= states.isin(paid_filter)
     if method_filter:
+        # '미입력' → 빈 문자열 매칭
+        _targets = {("" if m == "미입력" else m) for m in method_filter}
         mask &= (
-            customer_contracts["결제방법"].fillna("").astype(str).str.strip().isin(method_filter)
+            customer_contracts["결제방법"].fillna("").astype(str).str.strip().isin(_targets)
         )
     customer_contracts = customer_contracts[mask]
 
