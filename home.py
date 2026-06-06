@@ -391,16 +391,19 @@ UNIT_MAP = {
 unit_cfg = UNIT_MAP[period_unit]
 
 # Google Sheets payments + contracts 로드 — 발행일 set인 회차의 단가 합산
+# (노션상태가 강등된 계약은 filter_active_contracts로 제외)
 try:
     payments_df = ct.load_payments()
-    contracts_for_unit = ct.load_contracts()
+    contracts_for_unit = ct.filter_active_contracts(ct.load_contracts())
 except Exception as e:
     payments_df = pd.DataFrame()
     contracts_for_unit = pd.DataFrame()
     st.warning(f"⚠️ 계약 관리 시트 로드 실패: {str(e)[:120]}")
 
 if not payments_df.empty and not contracts_for_unit.empty:
-    billed = payments_df.merge(
+    # 활성 계약의 payment만 대상으로 단가 join
+    active_pay = payments_df[payments_df["contract_id"].isin(contracts_for_unit["contract_id"])]
+    billed = active_pay.merge(
         contracts_for_unit[["contract_id", "단가"]],
         on="contract_id",
         how="left",

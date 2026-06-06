@@ -131,7 +131,7 @@ st.markdown(
 
 # ============== 데이터 로드 (계약 관리와 동일 소스) ==============
 try:
-    contracts_df = ct.load_contracts()
+    contracts_df = ct.filter_active_contracts(ct.load_contracts())
     payments_df = ct.load_payments()
 except Exception as e:
     st.error(f"Google Sheets 데이터 로드 실패: {e}")

@@ -205,7 +205,7 @@ if st.sidebar.button("♻️ 캐시 새로고침", use_container_width=True):
 
 # ============== 데이터 로드 ==============
 try:
-    contracts_df = ct.load_contracts()
+    contracts_df = ct.filter_active_contracts(ct.load_contracts())
     payments_df = ct.load_payments()
 except Exception as e:
     import traceback

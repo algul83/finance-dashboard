@@ -17,6 +17,7 @@ CONTRACT_COLUMNS = [
     "건명",
     "서비스명",          # 콤마 join
     "신규갱신",          # 일회성/신규/갱신
+    "노션상태",          # 노션 현재 status — 성공/입금완료/정산완료 외는 대시보드에서 숨김
     "계약일",            # YYYY-MM-DD
     "총금액",
     "단가",              # 단위당 가격 (수동 입력)
@@ -28,6 +29,19 @@ CONTRACT_COLUMNS = [
     "created_at",
     "updated_at",
 ]
+
+# 회계 대시보드에 노출할 노션 상태 (이 외는 자동 숨김)
+ACTIVE_NOTION_STATES = {"성공", "입금완료", "정산완료"}
+
+
+def filter_active_contracts(df: pd.DataFrame) -> pd.DataFrame:
+    """노션상태가 강등(제안/협상/리드/실패)된 계약을 대시보드 노출에서 제외.
+    노션상태가 빈 값인 경우(마이그레이션 전 row)는 backward-compat으로 유지."""
+    if df.empty or "노션상태" not in df.columns:
+        return df
+    keep = ACTIVE_NOTION_STATES | {""}
+    mask = df["노션상태"].fillna("").astype(str).str.strip().isin(keep)
+    return df[mask]
 
 PAYMENT_COLUMNS = [
     "payment_id",       # P{timestamp}
@@ -160,6 +174,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             "건명": n.get("name") or "",
             "서비스명": ", ".join(n["서비스명"]) if n.get("서비스명") else "",
             "신규갱신": n.get("신규갱신") or "",
+            "노션상태": n.get("상태") or "",
             "계약일": (
                 n["계약일"].strftime("%Y-%m-%d")
                 if pd.notna(n.get("계약일")) else ""
@@ -328,6 +343,7 @@ def resync_meta_from_notion(notion_df: pd.DataFrame) -> int:
         "건명": ("name", lambda v: (v or "").strip()),
         "서비스명": ("서비스명", lambda v: ", ".join(v) if v else ""),
         "신규갱신": ("신규갱신", lambda v: v or ""),
+        "노션상태": ("상태", lambda v: (v or "").strip()),
         "정산유형": ("정산유형", lambda v: v or ""),
         "계약일": ("계약일", lambda v: v.strftime("%Y-%m-%d") if pd.notna(v) else ""),
         "총금액": ("총매출", lambda v: float(v or 0)),
