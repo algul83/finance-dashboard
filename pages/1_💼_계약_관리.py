@@ -861,6 +861,8 @@ def _render_contract_card(c):
                         changes_count += 1
                 if changes_count:
                     st.success(f"✅ {changes_count}개 회차 변경 저장 완료")
+                    # 저장 후 카드 접기
+                    st.session_state[f"expand_{contract_id}"] = False
                     st.rerun()
                 else:
                     st.info("변경된 내용이 없습니다.")
