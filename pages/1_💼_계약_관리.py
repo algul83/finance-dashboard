@@ -665,18 +665,34 @@ def _render_contract_card(c):
             # 50 / 150+150+130=430 / 150 / 150 / 150 / 150
             _h_cols = st.columns([0.5, 4.3, 1.5, 1.5, 1.5, 1.5])
 
-            # selectbox 높이(~38px)와 맞추기 위해 markdown 셀을 flex로 고정 높이 적용
+            # selectbox 높이(~38px)와 맞추기 + 시각 통일 (border + bg)
             _cell_h = 38
             _flex_base = (
                 f"height:{_cell_h}px;display:flex;align-items:center;"
-                "padding:0 12px;border-radius:6px;font-size:0.78rem;white-space:nowrap;"
+                "padding:0 12px;border-radius:6px;font-size:0.85rem;white-space:nowrap;"
                 "overflow:hidden;text-overflow:ellipsis;box-sizing:border-box;"
+                "border:1px solid #EDECF1;"
+            )
+
+            # 합계 row 안의 모든 셀(selectbox 포함)을 같은 라인에 정렬
+            st.markdown(
+                """
+                <style>
+                div[data-testid="stHorizontalBlock"] div[data-testid="stSelectbox"] {
+                    margin: 0 !important;
+                }
+                div[data-testid="stHorizontalBlock"] div[data-testid="stSelectbox"] > div {
+                    margin: 0 !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
             )
 
             with _h_cols[0]:
                 st.markdown(
                     f"<div style='background:#F1EEFB;color:#4A35B0;font-weight:700;"
-                    f"justify-content:center;font-size:0.8rem;{_flex_base}'>합계</div>",
+                    f"justify-content:center;{_flex_base}'>합계</div>",
                     unsafe_allow_html=True,
                 )
 
@@ -692,7 +708,7 @@ def _render_contract_card(c):
                 )
 
             _num_cell_style = (
-                "background:#FAFAFC;color:#1E1B2E;font-weight:700;"
+                "background:white;color:#1E1B2E;font-weight:700;"
                 "justify-content:flex-end;" + _flex_base
             )
             for _i, _v in enumerate([_sum_금액, _sum_단가, _sum_고객]):
