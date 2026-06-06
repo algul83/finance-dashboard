@@ -502,9 +502,13 @@ def _render_contract_card(c):
                 view[col] = pd.to_datetime(view[col], errors="coerce")
             view["금액"] = view["금액"].astype(float).round().astype("Int64")
             view["고객입금액"] = view["고객입금액"].astype(float).round().astype("Int64")
-            # 계약 단위 단가를 모든 회차 row에 동일 값으로 표시 (read-only)
-            view["단가"] = pd.to_numeric(c.get("단가", 0), errors="coerce")
-            view["단가"] = view["단가"].fillna(0).astype(float).round().astype("Int64")
+            # 계약 단위 단가를 모든 회차 row에 동일 값으로 표시
+            # (Streamlit data_editor + Int64 broadcast 충돌 회피 위해 명시적 Series 생성)
+            try:
+                _단가_val = int(float(c.get("단가") or 0))
+            except (TypeError, ValueError):
+                _단가_val = 0
+            view["단가"] = pd.Series([_단가_val] * len(view), dtype="Int64", index=view.index)
             # 컬럼 순서 재정렬: 매출액(금액) 우측에 단가
             view = view[[
                 "payment_id", "회차", "청구예정일", "발행일", "금액", "단가", "고객입금액", "입금일",
