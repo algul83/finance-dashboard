@@ -425,61 +425,89 @@ if billed.empty:
         "계약 관리에서 회차별 발행일을 입력하면 여기에 반영됩니다."
     )
 else:
-    billed["period"] = billed["발행일"].dt.to_period(unit_cfg["freq"]).dt.start_time
-    agg = (
-        billed.groupby("period")["단가"].sum()
-        .reset_index().sort_values("period")
-        .rename(columns={"단가": "총매출"})
+    # 연도별 비교가 가능한 그룹 막대 — 월별/분기별일 때 연도별 색 분리
+    billed["년도"] = billed["발행일"].dt.year.astype(str)
+
+    # 연도별 컬러 팔레트 (가장 최근 연도 = 진보라, 이전 연도들은 다른 톤)
+    _years = sorted(billed["년도"].unique())
+    _year_palette = ["#F59E0B", PRIMARY, ACCENT, PRIMARY_DARK, "#0EA5E9"]
+    _color_map = {y: _year_palette[i % len(_year_palette)] for i, y in enumerate(_years)}
+
+    if period_unit == "월별":
+        billed["월"] = billed["발행일"].dt.month
+        agg = billed.groupby(["월", "년도"])["단가"].sum().reset_index()
+        fig = px.bar(
+            agg, x="월", y="단가", color="년도",
+            color_discrete_map=_color_map, barmode="group",
+            labels={"단가": "매출 (원)", "월": "", "년도": ""},
+            text="단가",
+        )
+        fig.update_xaxes(
+            tickmode="array", tickvals=list(range(1, 13)),
+            ticktext=[f"{m}월" for m in range(1, 13)],
+        )
+    elif period_unit == "분기별":
+        billed["분기"] = billed["발행일"].dt.quarter
+        agg = billed.groupby(["분기", "년도"])["단가"].sum().reset_index()
+        fig = px.bar(
+            agg, x="분기", y="단가", color="년도",
+            color_discrete_map=_color_map, barmode="group",
+            labels={"단가": "매출 (원)", "분기": "", "년도": ""},
+            text="단가",
+        )
+        fig.update_xaxes(
+            tickmode="array", tickvals=[1, 2, 3, 4],
+            ticktext=["Q1", "Q2", "Q3", "Q4"],
+        )
+    elif period_unit == "연별":
+        agg = billed.groupby("년도")["단가"].sum().reset_index()
+        fig = px.bar(
+            agg, x="년도", y="단가",
+            color="년도", color_discrete_map=_color_map,
+            labels={"단가": "매출 (원)", "년도": ""},
+            text="단가",
+        )
+    else:  # 일별
+        billed["일"] = billed["발행일"].dt.date
+        agg = billed.groupby("일")["단가"].sum().reset_index()
+        fig = px.bar(
+            agg, x="일", y="단가",
+            color_discrete_sequence=[PRIMARY],
+            labels={"단가": "매출 (원)", "일": ""},
+        )
+
+    fig.update_traces(
+        marker_line_width=0,
+        texttemplate="%{text:,.0f}",
+        textposition="outside",
+        textfont=dict(size=10),
+        cliponaxis=False,
     )
-
-    def _to_rgba(hex_color, a=0.18):
-        h = hex_color.lstrip("#")
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-        return f"rgba({r},{g},{b},{a})"
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=agg["period"], y=agg["총매출"],
-        mode="lines+markers", name="매출",
-        line=dict(color=PRIMARY, width=2.4, shape="spline", smoothing=0.8),
-        marker=dict(size=7, color="white", line=dict(width=2, color=PRIMARY)),
-        fill="tozeroy", fillcolor=_to_rgba(PRIMARY, 0.18),
-        hovertemplate=f"<b>%{{x|{unit_cfg['fmt'] or '%Y-%m-%d'}}}</b><br>매출 %{{y:,.0f}}원<extra></extra>",
-    ))
-
-    xaxis_kwargs = dict(
-        showgrid=False, showline=False, zeroline=False, title="",
-        tickangle=0,
-    )
-    if period_unit == "분기별":
-        unique_p = sorted(agg["period"].unique())
-        ticktext = [f"{pd.Timestamp(p).year}-Q{(pd.Timestamp(p).month-1)//3+1}" for p in unique_p]
-        xaxis_kwargs.update(tickmode="array", tickvals=unique_p, ticktext=ticktext)
-    elif unit_cfg["fmt"]:
-        xaxis_kwargs["tickformat"] = unit_cfg["fmt"]
-        if period_unit == "월별":
-            xaxis_kwargs["dtick"] = "M1"
-        elif period_unit == "연별":
-            xaxis_kwargs["dtick"] = "M12"
-
     fig.update_layout(
-        height=380, hovermode="x unified",
+        height=420,
         plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(l=10, r=10, t=20, b=10),
-        font=dict(family="Pretendard, Malgun Gothic, 맑은 고딕, sans-serif", size=12, color="#1E1B2E"),
-        showlegend=False,
-        xaxis=xaxis_kwargs,
+        margin=dict(l=10, r=10, t=30, b=10),
+        font=dict(family="Pretendard, Malgun Gothic, 맑은 고딕, sans-serif",
+                  size=12, color="#1E1B2E"),
+        showlegend=(period_unit in ("월별", "분기별")),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02,
+            x=1.0, xanchor="right",
+            bgcolor="rgba(255,255,255,0.85)",
+            font=dict(size=11),
+        ),
         yaxis=dict(
             showgrid=True, gridcolor="#F0EFF5",
             showline=False, zeroline=False, title="",
             separatethousands=True,
         ),
+        bargap=0.18, bargroupgap=0.08,
         hoverlabel=dict(bgcolor="white", bordercolor="#E5E5E8",
                         font=dict(family="Pretendard, sans-serif", size=12)),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-    total_issued = agg["총매출"].sum()
+    total_issued = agg["단가"].sum()
     st.caption(f"누적 발행 매출: **{total_issued:,.0f}원** · {total_issued/1e8:.2f}억")
 
 # ============== 영업 파이프라인 ==============
