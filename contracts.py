@@ -21,6 +21,7 @@ CONTRACT_COLUMNS = [
     "계약일",            # YYYY-MM-DD
     "총금액",
     "단가",              # 단위당 가격 (수동 입력)
+    "결제방법",          # 세금계산서/계산서/카드결제 (계약 단위 단일)
     "정산유형",          # 1회정산/매월정산/분할정산
     "분납회차",          # 분할정산: 2 또는 3 (수동 입력)
     "구독시작일",
@@ -57,6 +58,8 @@ PAYMENT_COLUMNS = [
     "created_at",
 ]
 
+PAYMENT_METHODS = ["세금계산서", "계산서", "카드결제"]
+
 
 def _ensure_headers(ws, expected_headers: list[str]) -> None:
     """1행 헤더 자동 셋업. 비어있거나 expected 컬럼 누락 시 덮어씀."""
@@ -80,6 +83,7 @@ def load_contracts() -> pd.DataFrame:
     df = pd.DataFrame(data)
     df["총금액"] = pd.to_numeric(df.get("총금액", 0), errors="coerce").fillna(0)
     df["단가"] = pd.to_numeric(df.get("단가", 0), errors="coerce").fillna(0)
+    df["결제방법"] = df.get("결제방법", "").astype(str).fillna("")
     df["분납회차"] = pd.to_numeric(df.get("분납회차", ""), errors="coerce")
     for c in ("계약일", "구독시작일", "구독종료일"):
         if c in df.columns:
@@ -181,6 +185,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             ),
             "총금액": total,
             "단가": "",  # 수동 입력 — 신규 동기화 시 빈 셀
+            "결제방법": "",  # 수동 선택 — 신규 동기화 시 빈 셀
             "정산유형": n.get("정산유형") or "",
             "분납회차": 분납_int if 분납_int > 0 else "",
             # 노션 계약일(date range)의 start → 구독시작일, end → 구독종료일

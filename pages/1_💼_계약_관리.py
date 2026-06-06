@@ -743,6 +743,18 @@ def _render_contract_card(c):
                         value=int(c["단가"]) if pd.notna(c.get("단가")) and c["단가"] else 0,
                         key=f"단가_{contract_id}",
                     )
+                    _curr_pay_method = str(c.get("결제방법") or "").strip()
+                    _pay_options = ["(미선택)"] + ct.PAYMENT_METHODS
+                    _pay_idx = (
+                        _pay_options.index(_curr_pay_method)
+                        if _curr_pay_method in _pay_options else 0
+                    )
+                    new_결제방법 = st.selectbox(
+                        "결제 방법",
+                        options=_pay_options,
+                        index=_pay_idx,
+                        key=f"결제방법_{contract_id}",
+                    )
                     new_구독시작 = st.date_input(
                         "구독 시작일",
                         value=c["구독시작일"].date() if pd.notna(c["구독시작일"]) else None,
@@ -759,6 +771,7 @@ def _render_contract_card(c):
                             contract_id,
                             분납회차=new_분납 if new_분납 > 0 else "",
                             단가=new_단가 if new_단가 > 0 else "",
+                            결제방법=(new_결제방법 if new_결제방법 != "(미선택)" else ""),
                             구독시작일=new_구독시작,
                             구독종료일=new_구독종료,
                             메모=new_메모,
