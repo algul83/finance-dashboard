@@ -367,7 +367,7 @@ st.markdown("## 📅 매출 추이")
 hdr_cols = st.columns([6, 4])
 with hdr_cols[0]:
     st.markdown(
-        '<div class="sec-meta">계약 관리 시트 발행일 기준 · 기간별 총액</div>',
+        '<div class="sec-meta">계약 관리 시트 발행일 기준 · 단가 합계</div>',
         unsafe_allow_html=True,
     )
 with hdr_cols[1]:
@@ -390,17 +390,25 @@ UNIT_MAP = {
 }
 unit_cfg = UNIT_MAP[period_unit]
 
-# Google Sheets payments 로드 — 발행일 set인 회차만
+# Google Sheets payments + contracts 로드 — 발행일 set인 회차의 단가 합산
 try:
     payments_df = ct.load_payments()
+    contracts_for_unit = ct.load_contracts()
 except Exception as e:
     payments_df = pd.DataFrame()
+    contracts_for_unit = pd.DataFrame()
     st.warning(f"⚠️ 계약 관리 시트 로드 실패: {str(e)[:120]}")
 
-billed = (
-    payments_df[payments_df["발행일"].notna()].copy()
-    if not payments_df.empty else pd.DataFrame()
-)
+if not payments_df.empty and not contracts_for_unit.empty:
+    billed = payments_df.merge(
+        contracts_for_unit[["contract_id", "단가"]],
+        on="contract_id",
+        how="left",
+    )
+    billed = billed[billed["발행일"].notna()].copy()
+    billed["단가"] = pd.to_numeric(billed["단가"], errors="coerce").fillna(0)
+else:
+    billed = pd.DataFrame()
 # 사이드바 date_range가 발행일 기간을 의미할 때만 적용 (period_basis와 무관하게 그대로 사용)
 if not billed.empty and len(date_range) == 2:
     start, end = date_range
@@ -416,9 +424,9 @@ if billed.empty:
 else:
     billed["period"] = billed["발행일"].dt.to_period(unit_cfg["freq"]).dt.start_time
     agg = (
-        billed.groupby("period")["금액"].sum()
+        billed.groupby("period")["단가"].sum()
         .reset_index().sort_values("period")
-        .rename(columns={"금액": "총매출"})
+        .rename(columns={"단가": "총매출"})
     )
 
     def _to_rgba(hex_color, a=0.18):
