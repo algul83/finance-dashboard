@@ -517,11 +517,11 @@ _ended_mask = _date_ended & _fully_paid_mask
 _active_contracts = customer_contracts[~_ended_mask]
 _ended_contracts = customer_contracts[_ended_mask]
 
-# 모두 펼치기 / 모두 접기 — 현재 필터된 모든 계약(진행중+종료)에 적용
+# 탭(진행중/종료) + 모두 펼치기/접기 — 한 줄에 좌우 배치
 st.markdown(
     """
     <style>
-    /* 모두 펼치기/접기 버튼 라벨 한 줄 유지 */
+    /* 모두 펼치기/접기 버튼 라벨 한 줄 유지 + segmented_control과 동일 높이 */
     button[key="expand_all_btn"] p,
     button[key="collapse_all_btn"] p,
     div[data-testid="stHorizontalBlock"] button p {
@@ -529,38 +529,54 @@ st.markdown(
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    /* segmented_control + 펼치기/접기 버튼 같은 라인 vertical center */
+    div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSegmentedControl"])
+        > div[data-testid="stColumn"] {
+        display: flex !important;
+        align-items: center !important;
+    }
+    /* 탭과 같은 높이의 버튼 */
+    button[key="expand_all_btn"],
+    button[key="collapse_all_btn"] {
+        height: 38px !important;
+        min-height: 38px !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
-_exp_cols = st.columns([2, 2, 8])
-with _exp_cols[0]:
-    if st.button("📂 모두 펼치기", use_container_width=True, key="expand_all_btn"):
-        for _cid in customer_contracts["contract_id"]:
-            st.session_state[f"expand_{_cid}"] = True
-        st.rerun()
-with _exp_cols[1]:
-    if st.button("📁 모두 접기", use_container_width=True, key="collapse_all_btn"):
-        for _cid in customer_contracts["contract_id"]:
-            st.session_state[f"expand_{_cid}"] = False
-        st.rerun()
 
 # st.tabs는 rerun 시 첫 탭으로 리셋되므로 session_state 유지되는 segmented_control 사용.
 # default 인자는 매 rerun마다 session_state를 덮어쓸 수 있으므로 명시적 초기화로 분리.
 if "contract_tab_choice" not in st.session_state:
     st.session_state["contract_tab_choice"] = "active"
 
-_selected_tab = st.segmented_control(
-    "계약 상태 탭",
-    options=["active", "ended"],
-    format_func=lambda x: (
-        f"📂 진행 중 ({len(_active_contracts)}건)"
-        if x == "active"
-        else f"🗂️ 종료 ({len(_ended_contracts)}건)"
-    ),
-    key="contract_tab_choice",
-    label_visibility="collapsed",
-)
+_tab_col, _spacer_col, _exp_col, _col_col = st.columns([5, 3, 2, 2])
+
+with _tab_col:
+    _selected_tab = st.segmented_control(
+        "계약 상태 탭",
+        options=["active", "ended"],
+        format_func=lambda x: (
+            f"📂 진행 중 ({len(_active_contracts)}건)"
+            if x == "active"
+            else f"🗂️ 종료 ({len(_ended_contracts)}건)"
+        ),
+        key="contract_tab_choice",
+        label_visibility="collapsed",
+    )
+
+with _exp_col:
+    if st.button("📂 모두 펼치기", use_container_width=True, key="expand_all_btn"):
+        for _cid in customer_contracts["contract_id"]:
+            st.session_state[f"expand_{_cid}"] = True
+        st.rerun()
+with _col_col:
+    if st.button("📁 모두 접기", use_container_width=True, key="collapse_all_btn"):
+        for _cid in customer_contracts["contract_id"]:
+            st.session_state[f"expand_{_cid}"] = False
+        st.rerun()
+
 # 사용자가 선택 해제(None)한 경우 진행 중으로 fallback
 if _selected_tab is None:
     _selected_tab = "active"
