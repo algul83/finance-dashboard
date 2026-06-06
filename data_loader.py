@@ -102,9 +102,8 @@ def load_sales_data() -> pd.DataFrame:
                         "우선순위": _prop(r, "우선순위"),
                         "계약일": _prop(r, "계약일"),  # date range의 start (계약 시작일)
                         "계약종료일": _prop_date_end(r, "계약일"),  # date range의 end (계약 종료일)
-                        "세금계산서발행일": _prop(r, "세금계산서 발행 일"),
-                        "입금완료": _prop(r, "입금완료 여부"),
                         "비고": _prop(r, "비고"),
+                        # 세금계산서발행일·입금완료여부는 노션과 분리 — 회계대시보드(Sheets)에서만 관리
                     })
                 cursor = resp.get("next_cursor")
                 if not cursor:
@@ -130,9 +129,8 @@ def load_sales_data() -> pd.DataFrame:
     if df.empty:
         return df
     # 날짜 컬럼 datetime 변환
-    for c in ("계약일", "계약종료일", "세금계산서발행일"):
+    for c in ("계약일", "계약종료일"):
         df[c] = pd.to_datetime(df[c], errors="coerce")
-    df["입금완료"] = df["입금완료"].fillna(False).astype(bool)
     df["총매출"] = pd.to_numeric(df["총매출"], errors="coerce").fillna(0)
     return df
 

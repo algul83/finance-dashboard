@@ -203,13 +203,8 @@ if df.empty:
 # ============== 사이드바 필터 ==============
 st.sidebar.header("🔧 필터")
 
-period_basis = st.sidebar.radio(
-    "기간 기준",
-    options=["세금계산서발행일", "계약일"],
-    index=0,
-    horizontal=True,
-)
-date_col = period_basis
+# 노션 영업현황은 계약일 기준만 의미 있음 (세금계산서 발행/입금은 시트에서 관리)
+date_col = "계약일"
 min_date = df[date_col].min()
 max_date = df[date_col].max()
 if pd.isna(min_date) or pd.isna(max_date):
@@ -217,7 +212,7 @@ if pd.isna(min_date) or pd.isna(max_date):
     max_date = pd.Timestamp.now()
 
 date_range = st.sidebar.date_input(
-    f"{period_basis} 범위",
+    "계약일 범위",
     value=(min_date.date(), max_date.date()),
     min_value=min_date.date(),
     max_value=max_date.date(),
@@ -259,23 +254,14 @@ else:
     fdf_period = fdf.copy()
 
 # ============== 집계 ==============
+# 발행/입금 관련 데이터는 회계관리 페이지(시트 기반)로 분리됨.
+# 홈에서는 노션의 영업 파이프라인 관점만 다룸.
 confirmed_states = ("성공", "입금완료", "정산완료")
 potential_states = ("리드", "제안", "협상")
 
 confirmed = fdf[fdf["상태"].isin(confirmed_states)]
 potential = fdf[fdf["상태"].isin(potential_states)]
-unpaid = fdf[(fdf["세금계산서발행일"].notna()) & (~fdf["입금완료"])]
-
-# 계약일은 지났는데 세금계산서 미발행 — 발행 누락 후보
 _today = pd.Timestamp.today().normalize()
-overdue_issue = fdf[
-    (fdf["계약일"].notna())
-    & (fdf["계약일"] <= _today)
-    & (fdf["세금계산서발행일"].isna())
-    & (fdf["상태"].isin(confirmed_states))
-].copy()
-if not overdue_issue.empty:
-    overdue_issue["경과일"] = (_today - overdue_issue["계약일"]).dt.days
 
 # ============== 핵심 KPI ==============
 st.markdown("## ⭐ 핵심 지표")
@@ -296,7 +282,7 @@ def kpi_card(label, value, sub="", danger=False, success=False):
     )
 
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 c1.markdown(
     kpi_card(
         "전체 파이프라인",
@@ -322,39 +308,11 @@ c3.markdown(
     ),
     unsafe_allow_html=True,
 )
-c4.markdown(
-    kpi_card(
-        "미수금",
-        f"{unpaid['총매출'].sum()/1e8:.2f}억",
-        f"{len(unpaid)}건 · 발행 / 입금 X",
-        danger=True,
-    ),
-    unsafe_allow_html=True,
-)
 
 # ============== 상단 알림 (자동 생성) ==============
+# 미수금·발행 누락 알림은 회계관리(시트 기반) 페이지로 이동했음.
+# 홈은 영업 데이터 정합성 알림만 유지.
 top_alerts = []
-
-if not unpaid.empty and unpaid["총매출"].sum() > 0:
-    top_pct = unpaid["총매출"].max() / unpaid["총매출"].sum() * 100
-    if top_pct > 50:
-        top_row = unpaid.loc[unpaid["총매출"].idxmax()]
-        cust = top_row["고객기관"] or top_row["name"]
-        top_alerts.append({
-            "title": "단일 고객 집중 위험",
-            "body": f"<b>{cust}</b> 1건이 미수금의 <b>{top_pct:.0f}%</b> · 우선 회수 권장",
-            "warn": False,
-        })
-
-if not overdue_issue.empty:
-    over_n = len(overdue_issue)
-    over_amount = float(overdue_issue["총매출"].sum())
-    max_overdue = int(overdue_issue["경과일"].max())
-    top_alerts.append({
-        "title": "세금계산서 발행 누락",
-        "body": f"<b>{over_n}건</b> ({over_amount/1e8:.2f}억) · 최장 {max_overdue}일 경과",
-        "warn": False,
-    })
 
 not_filled_n = int(confirmed["정산유형"].isna().sum())
 not_filled_amount = float(confirmed.loc[confirmed["정산유형"].isna(), "총매출"].sum())
@@ -656,40 +614,7 @@ st.dataframe(
     use_container_width=True,
 )
 
-# ============== 계약 → 발행 지연 ==============
-st.markdown("## ⏱️ 계약 → 세금계산서 발행 지연")
-st.markdown(
-    '<div class="sec-meta">계약일·발행일이 모두 채워진 건만</div>',
-    unsafe_allow_html=True,
-)
-
-issued = fdf[(fdf["계약일"].notna()) & (fdf["세금계산서발행일"].notna())].copy()
-issued["지연일"] = (issued["세금계산서발행일"] - issued["계약일"]).dt.days
-
-if not issued.empty:
-    col_p, col_q = st.columns([1, 2])
-    with col_p:
-        st.metric("평균 지연일", f"{issued['지연일'].mean():.1f}일")
-        st.metric("최소 / 최대", f"{issued['지연일'].min()}일 / {issued['지연일'].max()}일")
-        st.caption(f"대상: {len(issued)}건")
-    with col_q:
-        fig = px.histogram(
-            issued, x="지연일", nbins=20,
-            color_discrete_sequence=[PRIMARY],
-            labels={"지연일": "계약→발행 일수"},
-        )
-        fig.update_traces(marker_line_width=0)
-        fig.update_layout(
-            height=260,
-            margin=dict(l=0, r=0, t=10, b=0),
-            plot_bgcolor="white",
-            yaxis=dict(showgrid=True, gridcolor="#F0EFF5", title=""),
-            xaxis=dict(title="일수"),
-            font=dict(family="Pretendard, sans-serif", size=12),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("계약일·발행일 모두 채워진 건이 없음.")
+# 계약 → 발행 지연 섹션은 회계관리 페이지(시트 기반)로 이동했음
 
 # ============== 계약 관리 페이지 안내 ==============
 st.info(
@@ -706,17 +631,8 @@ st.markdown(
 
 insights = []
 
-if not unpaid.empty and unpaid["총매출"].sum() > 0:
-    top_pct = unpaid["총매출"].max() / unpaid["총매출"].sum() * 100
-    if top_pct > 50:
-        top_name = (
-            unpaid.loc[unpaid["총매출"].idxmax(), "고객기관"]
-            or unpaid.loc[unpaid["총매출"].idxmax(), "name"]
-        )
-        insights.append({
-            "title": "단일 고객 집중도",
-            "body": f"<b>{top_name}</b> 1건이 미수금의 {top_pct:.0f}% — 회수 우선.",
-        })
+# 미수금·발행 누락·발행 지연 인사이트는 회계관리 페이지(시트 기반)로 이동.
+# 홈은 영업 지표 인사이트만 유지.
 
 if not nr_agg.empty:
     new_row = nr_agg[nr_agg["신규갱신"] == "신규"]
@@ -729,21 +645,6 @@ if not nr_agg.empty:
                     "title": "신규 매출 의존도",
                     "body": f"확정 매출의 {new_pct:.0f}%가 신규 — 갱신 매출 비중 확대 전략 검토.",
                 })
-
-if not issued.empty and issued["지연일"].std() > 20:
-    insights.append({
-        "title": "발행 정책 일관성",
-        "body": f"계약→발행 지연 표준편차 {issued['지연일'].std():.0f}일 — 선/후 발행 정책 정립 필요.",
-    })
-
-if not overdue_issue.empty:
-    insights.append({
-        "title": "세금계산서 발행 누락",
-        "body": (
-            f"확정 {len(overdue_issue)}건 ({overdue_issue['총매출'].sum()/1e8:.2f}억)이 "
-            f"계약일 경과 후 미발행 — 최장 {int(overdue_issue['경과일'].max())}일."
-        ),
-    })
 
 if not_filled_n > 0:
     insights.append({

@@ -185,12 +185,8 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
         contract_payment_plan[cid] = {
             "분납": 분납_int,
             "총금액": total,
-            "발행일": (
-                n["세금계산서발행일"].strftime("%Y-%m-%d")
-                if pd.notna(n.get("세금계산서발행일")) else ""
-            ),
             "해외": is_overseas(contract_row["서비스명"]),
-            # 입금완료/입금일은 Notion과 연결 안 함 — Streamlit에서 직접 관리
+            # 발행일/입금완료/입금일은 노션과 분리 — 회계 대시보드에서만 관리
         }
 
     if new_contracts:
@@ -201,7 +197,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
         )
 
     # 결제 회차 생성: 분납회차 N → N개 row 모두 생성
-    # 1회차에 한해 Notion 발행일만 복사 (입금완료/입금일은 Streamlit에서 관리)
+    # 발행일/입금완료/입금일은 노션과 분리 — 시트에 빈 셀로 생성, 대시보드에서 직접 입력
     new_payments_total = 0
     if new_contracts:
         ws_p = get_worksheet("Payments")
@@ -217,7 +213,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                     "contract_id": cid,
                     "회차": str(i),
                     "청구예정일": "",
-                    "발행일": plan["발행일"] if is_first else "",
+                    "발행일": "",
                     "입금완료": "FALSE",
                     "입금일": "",
                     "금액": per_amount,
