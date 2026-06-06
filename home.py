@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import contracts as ct
 from data_loader import explode_services, load_sales_data
 
 # ============== Palette ==============
@@ -402,11 +403,13 @@ st.info(
 )
 
 # ============== 매출 추이 ==============
+# 데이터 소스: Google Sheets payments.발행일 (계약 관리·회계 관리와 동일)
+# → 계약 관리에서 회차별 발행일 입력하면 즉시 반영
 st.markdown("## 📅 매출 추이")
 hdr_cols = st.columns([6, 4])
 with hdr_cols[0]:
     st.markdown(
-        '<div class="sec-meta">세금계산서 발행 기준 · 기간별 총액</div>',
+        '<div class="sec-meta">계약 관리 시트 발행일 기준 · 기간별 총액</div>',
         unsafe_allow_html=True,
     )
 with hdr_cols[1]:
@@ -429,14 +432,35 @@ UNIT_MAP = {
 }
 unit_cfg = UNIT_MAP[period_unit]
 
-billed = fdf[fdf["세금계산서발행일"].notna()].copy()
+# Google Sheets payments 로드 — 발행일 set인 회차만
+try:
+    payments_df = ct.load_payments()
+except Exception as e:
+    payments_df = pd.DataFrame()
+    st.warning(f"⚠️ 계약 관리 시트 로드 실패: {str(e)[:120]}")
+
+billed = (
+    payments_df[payments_df["발행일"].notna()].copy()
+    if not payments_df.empty else pd.DataFrame()
+)
+# 사이드바 date_range가 발행일 기간을 의미할 때만 적용 (period_basis와 무관하게 그대로 사용)
+if not billed.empty and len(date_range) == 2:
+    start, end = date_range
+    billed = billed[
+        (billed["발행일"].dt.date >= start) & (billed["발행일"].dt.date <= end)
+    ]
+
 if billed.empty:
-    st.info("기간 내 세금계산서 발행 건이 없습니다.")
+    st.info(
+        "기간 내 세금계산서 발행 회차가 없습니다. "
+        "계약 관리에서 회차별 발행일을 입력하면 여기에 반영됩니다."
+    )
 else:
-    billed["period"] = billed["세금계산서발행일"].dt.to_period(unit_cfg["freq"]).dt.start_time
+    billed["period"] = billed["발행일"].dt.to_period(unit_cfg["freq"]).dt.start_time
     agg = (
-        billed.groupby("period")["총매출"].sum()
+        billed.groupby("period")["금액"].sum()
         .reset_index().sort_values("period")
+        .rename(columns={"금액": "총매출"})
     )
 
     def _to_rgba(hex_color, a=0.18):
