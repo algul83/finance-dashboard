@@ -405,7 +405,21 @@ _ended_onetime = (
     & customer_contracts["구독시작일"].notna()
     & (customer_contracts["구독시작일"] < _today)
 )
-_ended_mask = _ended_subscription | _ended_onetime
+_date_ended = _ended_subscription | _ended_onetime
+
+# 추가 조건: 입금율 100%여야 종료. 진행 중 카드와 동일하게 effective_paid_amount 사용.
+def _fully_paid(cid: str, total: float) -> bool:
+    if total <= 0:
+        return False
+    pays = payments_df[payments_df["contract_id"] == cid] if not payments_df.empty else pd.DataFrame()
+    paid = ct.effective_paid_amount(pays)
+    return paid / total >= 1.0
+
+
+_fully_paid_mask = customer_contracts.apply(
+    lambda r: _fully_paid(r["contract_id"], r["총금액"]), axis=1
+)
+_ended_mask = _date_ended & _fully_paid_mask
 _active_contracts = customer_contracts[~_ended_mask]
 _ended_contracts = customer_contracts[_ended_mask]
 
