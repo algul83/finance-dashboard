@@ -166,7 +166,7 @@ if st.sidebar.button("🔄 Notion에서 신규 성사 건 가져오기", use_con
             st.sidebar.error(f"동기화 실패: {e}")
 
 if st.sidebar.button(
-    "🔄 기존 계약 메타·분납회차 일괄 갱신",
+    "🔄 기존 데이터 갱신",
     use_container_width=True,
     help=(
         "Notion 변경 사항을 Sheets에 반영합니다. "
@@ -174,7 +174,7 @@ if st.sidebar.button(
         "분납회차(부족한 결제 회차 row 자동 생성) 순으로 실행."
     ),
 ):
-    with st.spinner("메타·분납회차 갱신 중..."):
+    with st.spinner("기존 데이터 갱신 중..."):
         try:
             notion_df = load_sales_data()
             meta_n = ct.resync_meta_from_notion(notion_df)
