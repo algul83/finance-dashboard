@@ -651,9 +651,9 @@ def _render_contract_card(c):
         if contract_payments.empty:
             st.caption("등록된 결제 회차가 없습니다. ⚙️ 계약 메타에서 분납 회차를 입력하거나 ➕ 회차 추가로 등록하세요.")
         else:
-            # 표시용 view: 회차·청구예정일·발행일·금액·단가·고객입금액·입금일
+            # 표시용 view: 회차·청구예정일·발행일·결제방법·금액·단가·고객입금액·입금일
             view = contract_payments.sort_values("회차")[[
-                "payment_id", "회차", "청구예정일", "발행일", "금액", "고객입금액", "입금일",
+                "payment_id", "회차", "청구예정일", "발행일", "결제방법", "금액", "고객입금액", "입금일",
             ]].copy()
             view = view.reset_index(drop=True)
             for col in ("청구예정일", "발행일", "입금일"):
@@ -667,15 +667,10 @@ def _render_contract_card(c):
             except (TypeError, ValueError):
                 _단가_val = 0
             view["단가"] = pd.Series([_단가_val] * len(view), dtype="Int64", index=view.index)
-            # 계약 단위 결제방법을 모든 회차 row에 동일 값으로 표시
-            # 명시적 object dtype Series로 생성 — data_editor edit-apply 경로의 dtype 충돌 방지
-            _결제방법_val = str(c.get("결제방법") or "").strip()
-            view["결제방법"] = pd.Series(
-                [_결제방법_val] * len(view),
-                dtype="object",
-                index=view.index,
-            )
-            # 컬럼 순서 재정렬: 발행일 → 결제방법, 매출액 → 단가
+            # 결제방법은 payment row 단위 — 시트의 row 값 그대로 사용
+            # (해외대조약은 세금계산서/대납액 분리; 그 외는 계약 단위 기본값으로 일괄)
+            view["결제방법"] = view["결제방법"].fillna("").astype(str)
+            # 컬럼 순서 재정렬: 발행일 → 결제방법 → 매출액 → 단가
             view = view[[
                 "payment_id", "회차", "청구예정일", "발행일", "결제방법",
                 "금액", "단가", "고객입금액", "입금일",
@@ -692,10 +687,16 @@ def _render_contract_card(c):
             def _bulk_apply_method():
                 val = st.session_state.get(f"bulk_pm_{contract_id}", "(미선택)")
                 new_val = "" if val == "(미선택)" else val
+                # 계약 단위 기본값 저장
                 ct.update_contract_meta(contract_id, 결제방법=new_val)
+                # 모든 payment row의 결제방법도 일괄 변경 (해외대조약 분리 정보는 덮어씀)
+                for _pid in view["payment_id"]:
+                    ct.update_payment_fields(_pid, 결제방법=new_val)
                 st.rerun()
 
-            _curr_method = str(c.get("결제방법") or "").strip()
+            # 일괄 선택 기본값: 모든 row가 같은 값이면 그 값, 다르면 (미선택)
+            _row_methods = {str(m or "").strip() for m in view["결제방법"]}
+            _curr_method = _row_methods.pop() if len(_row_methods) == 1 else ""
             _options_pm = ["(미선택)"] + ct.PAYMENT_METHODS
             _idx_pm = _options_pm.index(_curr_method) if _curr_method in _options_pm else 0
 
@@ -907,14 +908,8 @@ def _render_contract_card(c):
                     ct.update_contract_meta(contract_id, 단가=new_단가 if new_단가 > 0 else "")
                     contract_changes.append("단가")
 
-                # 결제방법 컬럼: 어느 row든 변경되면 계약 단위로 반영
-                orig_결제 = str(c.get("결제방법") or "").strip()
-                edited_결제 = edited["결제방법"].fillna("").astype(str).str.strip()
-                new_결제_vals = edited_결제[edited_결제 != orig_결제].unique()
-                if len(new_결제_vals) > 0:
-                    new_결제 = str(new_결제_vals[0]).strip()
-                    ct.update_contract_meta(contract_id, 결제방법=new_결제)
-                    contract_changes.append("결제방법")
+                # 결제방법은 회차 단위로 변경되도록 per-row diff에서 처리
+                # (해외대조약: 세금계산서/대납액 분리; 그 외: 사용자가 직접 수정)
 
                 # 분납회차 12회 + 1회차 청구예정일 입력된 경우 → 2~12회차 청구예정일 자동 채움 (빈 셀만)
                 try:
@@ -941,7 +936,7 @@ def _render_contract_card(c):
                     new = edited.loc[idx]
                     pid = orig["payment_id"]
                     diffs = {}
-                    for col in ("청구예정일", "발행일", "입금일", "금액", "고객입금액"):
+                    for col in ("청구예정일", "발행일", "결제방법", "입금일", "금액", "고객입금액"):
                         a, b = orig[col], new[col]
                         if pd.isna(a) and pd.isna(b):
                             continue
