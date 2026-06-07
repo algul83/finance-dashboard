@@ -483,87 +483,161 @@ else:
     total_issued = agg["단가"].sum()
     st.caption(f"누적 발행 매출: **{total_issued:,.0f}원** · {total_issued/1e8:.2f}억")
 
-    # ----- 3줄 자동 분석 -----
+    # ----- 자동 분석 — 분기별/월별은 YoY 동일 기간 비교 중심 -----
     _year_totals = billed.groupby("년도")["단가"].sum().sort_index()
     _analysis_lines = []
 
-    # 1) 최신 연도 vs 직전 연도 성장
-    if len(_year_totals) >= 2:
-        _latest_year = _year_totals.index[-1]
-        _prev_year = _year_totals.index[-2]
-        _latest = _year_totals.iloc[-1]
-        _prev = _year_totals.iloc[-2]
-        if _prev > 0:
-            _growth = (_latest - _prev) / _prev * 100
-            _trend_icon = "📈" if _growth >= 0 else "📉"
-            _analysis_lines.append(
-                f"{_trend_icon} **{_latest_year}년 매출 {_latest/1e8:.2f}억** — "
-                f"전년({_prev_year}년) 대비 **{_growth:+.1f}%** "
-                f"{'성장세 유지' if _growth >= 10 else ('완만한 증가' if _growth >= 0 else '감소세 — 신규 영업 강화 필요')}"
-            )
-        else:
-            _analysis_lines.append(
-                f"📊 **{_latest_year}년 매출 {_latest/1e8:.2f}억** · 전년 데이터 없어 비교 불가"
-            )
-    elif len(_year_totals) == 1:
-        _yr = _year_totals.index[0]
+    def _yoy_pivot(period_col, period_label_fn):
+        """동일 기간(분기/월)별로 연도를 columns로 펼친 pivot 반환."""
+        return billed.groupby([period_col, "년도"])["단가"].sum().unstack()
+
+    def _fmt_amt(v):
+        """금액을 보기 좋게 (1억 이상은 억, 그 외는 백만)."""
+        if v >= 1e8:
+            return f"{v/1e8:.2f}억"
+        return f"{v/1e6:.1f}백만"
+
+    if period_unit == "분기별" and "분기" in billed.columns and len(_year_totals) >= 2:
+        # 분기별 YoY 비교 (직전 연도 vs 최신 연도)
+        _piv = _yoy_pivot("분기", lambda q: f"Q{q}")
+        _latest_y = _piv.columns[-1]
+        _prev_y = _piv.columns[-2]
+        _yoy = _piv[[_prev_y, _latest_y]].copy()
+
         _analysis_lines.append(
-            f"📊 **{_yr}년 매출 {_year_totals.iloc[0]/1e8:.2f}억** · 단일 연도 데이터"
+            f"📊 **{_prev_y}년 vs {_latest_y}년 분기 비교** "
+            f"(동일 분기 매출 변화)"
         )
 
-    # 2) 분기/월 편중도 (좋은 점 또는 유의점)
-    if period_unit == "분기별" and "분기" in billed.columns:
-        _q_totals = billed.groupby("분기")["단가"].sum()
-        _top_q = _q_totals.idxmax()
-        _q_share = _q_totals.max() / _q_totals.sum() * 100 if _q_totals.sum() > 0 else 0
-        if _q_share > 40:
-            _analysis_lines.append(
-                f"⚠️ **Q{_top_q}** 분기에 매출 {_q_share:.0f}% 편중 — "
-                f"분기 분산 또는 안정 매출원 확보 검토 필요"
-            )
-        else:
-            _analysis_lines.append(
-                f"✅ 분기별 매출 비교적 균등 (최대 분기 비중 {_q_share:.0f}%) — 안정적 분포"
-            )
-    elif period_unit == "월별" and "월" in billed.columns:
-        _m_totals = billed.groupby("월")["단가"].sum()
-        _top_m = _m_totals.idxmax()
-        _m_share = _m_totals.max() / _m_totals.sum() * 100 if _m_totals.sum() > 0 else 0
-        if _m_share > 25:
-            _analysis_lines.append(
-                f"⚠️ **{_top_m}월**에 매출 {_m_share:.0f}% 편중 — "
-                f"월별 분산 필요"
-            )
-        else:
-            _analysis_lines.append(
-                f"✅ 월별 매출 분산 양호 (최대 월 비중 {_m_share:.0f}%)"
-            )
-    elif period_unit == "연도별":
-        if len(_year_totals) >= 2:
-            _cv = _year_totals.std() / _year_totals.mean() if _year_totals.mean() > 0 else 0
-            if _cv > 0.5:
-                _analysis_lines.append(
-                    f"⚠️ 연도별 매출 변동성 큰 편 (표준편차/평균 {_cv*100:.0f}%) — "
-                    f"안정 매출 확보 전략 필요"
+        _quarter_lines = []
+        _best = (None, -1e18)
+        _worst = (None, 1e18)
+        for _q in sorted(_yoy.index):
+            _p = _yoy.loc[_q, _prev_y]
+            _c = _yoy.loc[_q, _latest_y]
+            if pd.isna(_p) and pd.isna(_c):
+                continue
+            _p = 0 if pd.isna(_p) else _p
+            _c = 0 if pd.isna(_c) else _c
+            if _p > 0 and _c > 0:
+                _pct = (_c - _p) / _p * 100
+                _icon = "📈" if _pct >= 0 else "📉"
+                _quarter_lines.append(
+                    f"&nbsp;&nbsp;{_icon} **Q{_q}**: {_fmt_amt(_p)} → {_fmt_amt(_c)} "
+                    f"(**{_pct:+.1f}%**)"
                 )
-            else:
-                _analysis_lines.append(
-                    f"✅ 연도별 매출 흐름 안정 (편차계수 {_cv*100:.0f}%) — 꾸준한 성장"
+                if _pct > _best[1]:
+                    _best = (_q, _pct)
+                if _pct < _worst[1]:
+                    _worst = (_q, _pct)
+            elif _p == 0 and _c > 0:
+                _quarter_lines.append(
+                    f"&nbsp;&nbsp;✨ **Q{_q}**: {_prev_y}년 매출 없음 → "
+                    f"{_latest_y}년 {_fmt_amt(_c)} 신규 매출"
                 )
+            elif _p > 0 and _c == 0:
+                _quarter_lines.append(
+                    f"&nbsp;&nbsp;⚠️ **Q{_q}**: {_prev_y}년 {_fmt_amt(_p)} → "
+                    f"{_latest_y}년 0원 (미발생/예정)"
+                )
+        _analysis_lines.extend(_quarter_lines)
 
-    # 3) 전체 누계 + 평균 기간 매출
+        # 좋은 점 / 유의점
+        if _best[0] is not None and _best[1] > 10:
+            _analysis_lines.append(
+                f"✅ **좋은 점**: Q{_best[0]} 매출이 전년 대비 **{_best[1]:+.1f}%** 성장 — "
+                f"강세 분기"
+            )
+        if _worst[0] is not None and _worst[1] < -10:
+            _analysis_lines.append(
+                f"⚠️ **유의점**: Q{_worst[0]} 매출이 전년 대비 **{_worst[1]:+.1f}%** 감소 — "
+                f"원인 점검·영업 강화 필요"
+            )
+
+    elif period_unit == "월별" and "월" in billed.columns and len(_year_totals) >= 2:
+        # 월별 YoY 비교 (직전 연도 vs 최신 연도)
+        _piv = _yoy_pivot("월", lambda m: f"{m}월")
+        _latest_y = _piv.columns[-1]
+        _prev_y = _piv.columns[-2]
+        _yoy = _piv[[_prev_y, _latest_y]].copy()
+
+        _analysis_lines.append(
+            f"📊 **{_prev_y}년 vs {_latest_y}년 월 비교** "
+            f"(동일 월 매출 변화 — 매출 발생 월만)"
+        )
+
+        _changes = []
+        for _m in sorted(_yoy.index):
+            _p = _yoy.loc[_m, _prev_y]
+            _c = _yoy.loc[_m, _latest_y]
+            _p = 0 if pd.isna(_p) else _p
+            _c = 0 if pd.isna(_c) else _c
+            if _p > 0 and _c > 0:
+                _pct = (_c - _p) / _p * 100
+                _changes.append((_m, _p, _c, _pct))
+
+        # 성장 상위 3 + 감소 하위 3 추출
+        _grew = sorted(_changes, key=lambda x: x[3], reverse=True)[:3]
+        _shrank = sorted([x for x in _changes if x[3] < 0], key=lambda x: x[3])[:3]
+
+        if _grew:
+            _g_parts = [f"**{m}월** ({pct:+.0f}%)" for m, _, _, pct in _grew]
+            _analysis_lines.append(
+                f"&nbsp;&nbsp;📈 성장 상위: " + ", ".join(_g_parts)
+            )
+        if _shrank:
+            _s_parts = [f"**{m}월** ({pct:+.0f}%)" for m, _, _, pct in _shrank]
+            _analysis_lines.append(
+                f"&nbsp;&nbsp;📉 감소 상위: " + ", ".join(_s_parts)
+            )
+
+        # 좋은 점 / 유의점
+        if _grew and _grew[0][3] > 10:
+            _b_m, _b_p, _b_c, _b_pct = _grew[0]
+            _analysis_lines.append(
+                f"✅ **좋은 점**: {_b_m}월 매출 전년 동월 대비 **{_b_pct:+.0f}%** "
+                f"({_fmt_amt(_b_p)} → {_fmt_amt(_b_c)}) — 강세 월"
+            )
+        if _shrank and _shrank[0][3] < -10:
+            _w_m, _w_p, _w_c, _w_pct = _shrank[0]
+            _analysis_lines.append(
+                f"⚠️ **유의점**: {_w_m}월 매출 전년 동월 대비 **{_w_pct:+.0f}%** "
+                f"({_fmt_amt(_w_p)} → {_fmt_amt(_w_c)}) — 점검 필요"
+            )
+
+    else:
+        # 연도별·일별 또는 연도가 1개뿐인 경우 — 기본 요약
+        if len(_year_totals) >= 2:
+            _latest_year = _year_totals.index[-1]
+            _prev_year = _year_totals.index[-2]
+            _latest = _year_totals.iloc[-1]
+            _prev = _year_totals.iloc[-2]
+            if _prev > 0:
+                _growth = (_latest - _prev) / _prev * 100
+                _trend_icon = "📈" if _growth >= 0 else "📉"
+                _analysis_lines.append(
+                    f"{_trend_icon} **{_latest_year}년 매출 {_fmt_amt(_latest)}** — "
+                    f"전년({_prev_year}년) 대비 **{_growth:+.1f}%**"
+                )
+        elif len(_year_totals) == 1:
+            _yr = _year_totals.index[0]
+            _analysis_lines.append(
+                f"📊 **{_yr}년 매출 {_fmt_amt(_year_totals.iloc[0])}** · 단일 연도 데이터"
+            )
+
+    # 누적 + 평균 (모든 단위 공통)
     if len(agg) > 0 and total_issued > 0:
         _avg_period = total_issued / len(agg)
         _analysis_lines.append(
-            f"💡 누적 매출 **{total_issued/1e8:.2f}억** · "
-            f"{period_unit} 평균 매출 **{_avg_period/1e6:.1f}백만원** "
-            f"({len(agg)}개 기간 기준)"
+            f"💡 누적 매출 **{_fmt_amt(total_issued)}** · "
+            f"{period_unit} 평균 **{_fmt_amt(_avg_period)}** "
+            f"({len(agg)}개 기간)"
         )
 
     if _analysis_lines:
         st.markdown(
             "<div style='background:#FAFAFC;border:1px solid #EDECF1;border-radius:8px;"
-            "padding:14px 18px;margin-top:10px;font-size:0.88rem;color:#374151;line-height:1.7'>"
+            "padding:14px 18px;margin-top:10px;font-size:0.88rem;color:#374151;line-height:1.8'>"
             + "<br>".join(_analysis_lines)
             + "</div>",
             unsafe_allow_html=True,
