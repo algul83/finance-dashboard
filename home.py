@@ -674,35 +674,63 @@ else:
 # ============== 서비스별 매출 ==============
 st.markdown("## 💎 서비스별 매출")
 st.markdown(
-    '<div class="sec-meta">확정 건만 — 상위 15개</div>',
+    '<div class="sec-meta">확정 건 — 카테고리별 매출</div>',
     unsafe_allow_html=True,
 )
 
+# 서비스명 → 카테고리 매핑
+_SERVICE_CATEGORY = {
+    "ConnectDI": "ConnectDI",
+    "ConnectISS": "ConnectDI",
+    "ConnectCare": "ConnectCARE",
+    "DrDI": "Dr.DI",
+    "국내대조약": "대조약",
+    "해외대조약": "대조약",
+    "AccessPharmacy": "솔루션 판매대행",
+    "IMAIOS": "솔루션 판매대행",
+    "RxPrix": "솔루션 판매대행",
+    "ONE Medi-Span": "솔루션 판매대행",
+    "KPIC": "솔루션 판매대행",
+    "ReadCube": "솔루션 판매대행",
+    "Dtree": "Dtree",
+}
+
+
+def _categorize_service(svc: str) -> str:
+    if not svc:
+        return "기타"
+    if svc.startswith("Connected-U"):
+        return "Connected-U"
+    return _SERVICE_CATEGORY.get(svc, "기타")
+
+
 confirmed_exp = explode_services(confirmed)
+confirmed_exp["카테고리"] = confirmed_exp["서비스명"].astype(str).apply(_categorize_service)
+
 svc_agg = (
-    confirmed_exp.groupby("서비스명")
+    confirmed_exp.groupby("카테고리")
     .agg(건수=("name", "count"), 매출=("총매출", "sum"))
     .reset_index()
     .sort_values("매출", ascending=False)
-    .head(15)
 )
 
 if not svc_agg.empty:
     fig = px.bar(
         svc_agg.sort_values("매출"),
-        y="서비스명", x="매출",
+        y="카테고리", x="매출",
         orientation="h",
-        labels={"매출": "매출 (원)", "서비스명": ""},
+        labels={"매출": "매출 (원)", "카테고리": ""},
         color_discrete_sequence=[PRIMARY],
         text="매출",
+        custom_data=["건수"],
     )
     fig.update_traces(
         texttemplate="%{text:,.0f}", textposition="outside",
         marker_line_width=0,
-        hovertemplate="<b>%{y}</b><br>매출 %{x:,.0f}원<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>매출 %{x:,.0f}원<br>%{customdata[0]}건<extra></extra>",
     )
     fig.update_layout(
-        height=max(340, 28 * len(svc_agg)),
+        height=max(340, 40 * len(svc_agg)),
         margin=dict(l=0, r=100, t=10, b=0),
         plot_bgcolor="white",
         xaxis=dict(showgrid=True, gridcolor="#F0EFF5", title=""),
