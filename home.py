@@ -320,14 +320,64 @@ st.info(
 # ============== 매출 추이 ==============
 # 데이터 소스: Google Sheets payments.발행일 (계약 관리·회계 관리와 동일)
 # → 계약 관리에서 회차별 발행일 입력하면 즉시 반영
+
+# 서비스명 → 카테고리 매핑 (서비스별 매출 차트와 공유)
+_SERVICE_CATEGORY = {
+    "ConnectDI": "ConnectDI",
+    "ConnectISS": "ConnectDI",
+    "ConnectCare": "ConnectCARE",
+    "DrDI": "Dr.DI",
+    "국내대조약": "대조약",
+    "해외대조약": "대조약",
+    "AccessPharmacy": "솔루션 판매대행",
+    "IMAIOS": "솔루션 판매대행",
+    "RxPrix": "솔루션 판매대행",
+    "ONE Medi-Span": "솔루션 판매대행",
+    "KPIC": "솔루션 판매대행",
+    "ReadCube": "솔루션 판매대행",
+    "Dtree": "Dtree",
+}
+# 7개 공식 카테고리 + 기타 (매핑 안 된 신규 서비스 안전망)
+_CATEGORY_ORDER = [
+    "ConnectDI", "ConnectCARE", "Dr.DI", "대조약",
+    "솔루션 판매대행", "Connected-U", "Dtree", "기타",
+]
+_CATEGORY_COLORS = {
+    "ConnectDI":     "#5B43C9",
+    "ConnectCARE":   "#A78BFA",
+    "Dr.DI":         "#F472B6",
+    "대조약":         "#34D399",
+    "솔루션 판매대행": "#60A5FA",
+    "Connected-U":   "#FBBF24",
+    "Dtree":         "#EC4899",
+    "기타":           "#9CA3AF",
+}
+
+
+def _categorize_service(svc: str) -> str:
+    if not svc:
+        return "기타"
+    if svc.startswith("Connected-U"):
+        return "Connected-U"
+    return _SERVICE_CATEGORY.get(svc, "기타")
+
+
 st.markdown("## 📅 매출 추이")
-hdr_cols = st.columns([6, 4])
+hdr_cols = st.columns([3, 3, 4])
 with hdr_cols[0]:
     st.markdown(
         '<div class="sec-meta">계약 관리 시트 발행일 기준 · 단가 합계</div>',
         unsafe_allow_html=True,
     )
 with hdr_cols[1]:
+    view_mode = st.segmented_control(
+        "보기 모드",
+        options=["전체", "서비스별"],
+        default="전체",
+        key="revenue_view_mode",
+        label_visibility="collapsed",
+    ) or "전체"
+with hdr_cols[2]:
     period_unit = st.radio(
         "기간 단위",
         options=["연도별", "분기별", "월별", "일별"],
@@ -397,64 +447,101 @@ else:
     # 범례·trace 순서를 연도 오름차순으로 고정 (2023 → 2024 → 2025 → 2026)
     _cat_orders = {"년도": _years}
 
-    if period_unit == "월별":
-        billed["월"] = billed["발행일"].dt.month
-        agg = billed.groupby(["월", "년도"])["단가"].sum().reset_index()
-        agg["period_label"] = agg["월"].astype(str) + "월"
-        fig = px.bar(
-            agg, x="월", y="단가", color="년도",
-            color_discrete_map=_color_map, barmode="group",
-            category_orders=_cat_orders,
-            labels={"단가": "", "월": "", "년도": ""},
-            custom_data=["년도", "period_label"],
-        )
-        fig.update_xaxes(
-            tickmode="array", tickvals=list(range(1, 13)),
-            ticktext=[f"{m}월" for m in range(1, 13)],
-        )
-    elif period_unit == "분기별":
-        billed["분기"] = billed["발행일"].dt.quarter
-        agg = billed.groupby(["분기", "년도"])["단가"].sum().reset_index()
-        agg["period_label"] = "Q" + agg["분기"].astype(str)
-        fig = px.bar(
-            agg, x="분기", y="단가", color="년도",
-            color_discrete_map=_color_map, barmode="group",
-            category_orders=_cat_orders,
-            labels={"단가": "", "분기": "", "년도": ""},
-            custom_data=["년도", "period_label"],
-        )
-        fig.update_xaxes(
-            tickmode="array", tickvals=[1, 2, 3, 4],
-            ticktext=["Q1", "Q2", "Q3", "Q4"],
-        )
-    elif period_unit == "연도별":
-        agg = billed.groupby("년도")["단가"].sum().reset_index()
-        agg["period_label"] = agg["년도"]
-        fig = px.bar(
-            agg, x="년도", y="단가",
-            color="년도", color_discrete_map=_color_map,
-            category_orders=_cat_orders,
-            labels={"단가": "", "년도": ""},
-            custom_data=["년도", "period_label"],
-        )
-        # x축에 연도(category)만 표기 — 추가 축선·tick 마크 없이
-        fig.update_xaxes(type="category")
-    else:  # 일별
-        billed["일"] = billed["발행일"].dt.date
-        agg = billed.groupby("일")["단가"].sum().reset_index()
-        agg["period_label"] = agg["일"].astype(str)
-        fig = px.bar(
-            agg, x="일", y="단가",
-            color_discrete_sequence=["#A78BFA"],
-            labels={"단가": "", "일": ""},
-            custom_data=["period_label"],
-        )
+    if view_mode == "전체":
+        if period_unit == "월별":
+            billed["월"] = billed["발행일"].dt.month
+            agg = billed.groupby(["월", "년도"])["단가"].sum().reset_index()
+            agg["period_label"] = agg["월"].astype(str) + "월"
+            fig = px.bar(
+                agg, x="월", y="단가", color="년도",
+                color_discrete_map=_color_map, barmode="group",
+                category_orders=_cat_orders,
+                labels={"단가": "", "월": "", "년도": ""},
+                custom_data=["년도", "period_label"],
+            )
+            fig.update_xaxes(
+                tickmode="array", tickvals=list(range(1, 13)),
+                ticktext=[f"{m}월" for m in range(1, 13)],
+            )
+        elif period_unit == "분기별":
+            billed["분기"] = billed["발행일"].dt.quarter
+            agg = billed.groupby(["분기", "년도"])["단가"].sum().reset_index()
+            agg["period_label"] = "Q" + agg["분기"].astype(str)
+            fig = px.bar(
+                agg, x="분기", y="단가", color="년도",
+                color_discrete_map=_color_map, barmode="group",
+                category_orders=_cat_orders,
+                labels={"단가": "", "분기": "", "년도": ""},
+                custom_data=["년도", "period_label"],
+            )
+            fig.update_xaxes(
+                tickmode="array", tickvals=[1, 2, 3, 4],
+                ticktext=["Q1", "Q2", "Q3", "Q4"],
+            )
+        elif period_unit == "연도별":
+            agg = billed.groupby("년도")["단가"].sum().reset_index()
+            agg["period_label"] = agg["년도"]
+            fig = px.bar(
+                agg, x="년도", y="단가",
+                color="년도", color_discrete_map=_color_map,
+                category_orders=_cat_orders,
+                labels={"단가": "", "년도": ""},
+                custom_data=["년도", "period_label"],
+            )
+            # x축에 연도(category)만 표기 — 추가 축선·tick 마크 없이
+            fig.update_xaxes(type="category")
+        else:  # 일별
+            billed["일"] = billed["발행일"].dt.date
+            agg = billed.groupby("일")["단가"].sum().reset_index()
+            agg["period_label"] = agg["일"].astype(str)
+            fig = px.bar(
+                agg, x="일", y="단가",
+                color_discrete_sequence=["#A78BFA"],
+                labels={"단가": "", "일": ""},
+                custom_data=["period_label"],
+            )
 
-    # 호버 — 연도 + 기간 라벨 같이 표시
-    if period_unit == "일별":
-        _hover = "<b>%{customdata[0]}</b><br>%{y:,.0f}원<extra></extra>"
-    else:
-        _hover = "<b>%{customdata[0]}년 %{customdata[1]}</b><br>%{y:,.0f}원<extra></extra>"
+        # 호버 — 연도 + 기간 라벨 같이 표시
+        if period_unit == "일별":
+            _hover = "<b>%{customdata[0]}</b><br>%{y:,.0f}원<extra></extra>"
+        else:
+            _hover = "<b>%{customdata[0]}년 %{customdata[1]}</b><br>%{y:,.0f}원<extra></extra>"
+
+    else:  # 서비스별
+        # billed의 각 회차에 서비스명 → 카테고리 부여
+        _b = billed.merge(
+            contracts_for_unit[["contract_id", "서비스명"]],
+            on="contract_id", how="left",
+        )
+        _b["_svc"] = _b["서비스명"].fillna("").astype(str).str.split(",")
+        _b = _b.explode("_svc")
+        _b["_svc"] = _b["_svc"].astype(str).str.strip()
+        _b["카테고리"] = _b["_svc"].apply(_categorize_service)
+        # 같은 회차가 같은 카테고리에 중복 매핑되는 경우(예: ConnectDI+ConnectISS) 1회만 카운트
+        _b = _b.drop_duplicates(["payment_id", "카테고리"])
+
+        if period_unit == "월별":
+            _b["기간"] = _b["발행일"].dt.strftime("%Y-%m")
+        elif period_unit == "분기별":
+            _b["기간"] = (
+                _b["발행일"].dt.year.astype(str) + " Q"
+                + _b["발행일"].dt.quarter.astype(str)
+            )
+        elif period_unit == "연도별":
+            _b["기간"] = _b["발행일"].dt.year.astype(str)
+        else:  # 일별
+            _b["기간"] = _b["발행일"].dt.date.astype(str)
+
+        agg = _b.groupby(["기간", "카테고리"])["단가"].sum().reset_index()
+
+        fig = px.bar(
+            agg, x="기간", y="단가", color="카테고리",
+            color_discrete_map=_CATEGORY_COLORS,
+            category_orders={"카테고리": _CATEGORY_ORDER},
+            labels={"단가": "", "기간": "", "카테고리": ""},
+        )
+        fig.update_xaxes(type="category", categoryorder="category ascending")
+        _hover = "<b>%{fullData.name}</b><br>%{x}<br>%{y:,.0f}원<extra></extra>"
 
     fig.update_traces(
         marker=dict(line=dict(width=0), opacity=0.92),
@@ -678,32 +765,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 서비스명 → 카테고리 매핑
-_SERVICE_CATEGORY = {
-    "ConnectDI": "ConnectDI",
-    "ConnectISS": "ConnectDI",
-    "ConnectCare": "ConnectCARE",
-    "DrDI": "Dr.DI",
-    "국내대조약": "대조약",
-    "해외대조약": "대조약",
-    "AccessPharmacy": "솔루션 판매대행",
-    "IMAIOS": "솔루션 판매대행",
-    "RxPrix": "솔루션 판매대행",
-    "ONE Medi-Span": "솔루션 판매대행",
-    "KPIC": "솔루션 판매대행",
-    "ReadCube": "솔루션 판매대행",
-    "Dtree": "Dtree",
-}
-
-
-def _categorize_service(svc: str) -> str:
-    if not svc:
-        return "기타"
-    if svc.startswith("Connected-U"):
-        return "Connected-U"
-    return _SERVICE_CATEGORY.get(svc, "기타")
-
-
+# 서비스 → 카테고리 매핑은 매출 추이 섹션에서 hoist (_SERVICE_CATEGORY, _categorize_service)
 confirmed_exp = explode_services(confirmed)
 confirmed_exp["카테고리"] = confirmed_exp["서비스명"].astype(str).apply(_categorize_service)
 
