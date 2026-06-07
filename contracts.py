@@ -113,11 +113,14 @@ def load_payments() -> pd.DataFrame:
 
 
 def effective_paid_amount(payments: pd.DataFrame) -> float:
-    """실제 입금된 금액 합. 고객입금액 > 0이면 그 값, 아니면 금액으로 fallback.
-    입금완료=True 인 행만 합산."""
+    """실제 입금된 매출 합. 고객입금액 > 0이면 그 값, 아니면 금액으로 fallback.
+    입금완료=True 인 행만 합산. 대납액 row는 매출이 아니므로 제외."""
     if payments.empty:
         return 0.0
-    paid = payments[payments["입금완료"]]
+    paid = payments[
+        payments["입금완료"]
+        & (payments["결제방법"].astype(str).str.strip() != "대납액")
+    ]
     if paid.empty:
         return 0.0
     effective = paid["고객입금액"].where(paid["고객입금액"] > 0, paid["금액"])
