@@ -504,9 +504,15 @@ else:
         _prev_y = _piv.columns[-2]
         _yoy = _piv[[_prev_y, _latest_y]].copy()
 
+        # 최신 연도가 올해면 현재 분기까지만 비교 (미래 분기 제외)
+        _today_ts = pd.Timestamp.today()
+        if str(_latest_y) == str(_today_ts.year):
+            _curr_q = _today_ts.quarter
+            _yoy = _yoy[_yoy.index <= _curr_q]
+
         _analysis_lines.append(
             f"📊 **{_prev_y}년 vs {_latest_y}년 분기 비교** "
-            f"(동일 분기 매출 변화)"
+            f"(동일 분기 매출 변화 · 현재 분기까지)"
         )
 
         _quarter_lines = []
@@ -561,9 +567,15 @@ else:
         _prev_y = _piv.columns[-2]
         _yoy = _piv[[_prev_y, _latest_y]].copy()
 
+        # 최신 연도가 올해면 현재 월까지만 비교 (미래 월 제외)
+        _today_ts = pd.Timestamp.today()
+        if str(_latest_y) == str(_today_ts.year):
+            _curr_m = _today_ts.month
+            _yoy = _yoy[_yoy.index <= _curr_m]
+
         _analysis_lines.append(
             f"📊 **{_prev_y}년 vs {_latest_y}년 월 비교** "
-            f"(동일 월 매출 변화 — 매출 발생 월만)"
+            f"(동일 월 매출 변화 · 현재 월까지)"
         )
 
         _changes = []
