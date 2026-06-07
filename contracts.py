@@ -543,6 +543,20 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
             [[r.get(c, "") for c in PAYMENT_COLUMNS] for r in new_rows],
             value_input_option="USER_ENTERED",
         )
+
+    # 분납회차 >= 2 이고 기존 회차 금액이 총금액과 동일(= 분납 누락 상태)이면 per_amount로 보정
+    if target_count >= 2 and not existing.empty and total_amount > 0:
+        for _, ex_row in existing.iterrows():
+            ex_금액 = float(pd.to_numeric(ex_row.get("금액", 0), errors="coerce") or 0)
+            if abs(ex_금액 - total_amount) < 1:
+                ex_고객 = float(pd.to_numeric(ex_row.get("고객입금액", 0), errors="coerce") or 0)
+                # 고객입금액도 총금액이면 함께 보정 (수기 입력은 보호)
+                fields = {"금액": per_amount}
+                if abs(ex_고객 - total_amount) < 1 and not overseas:
+                    fields["고객입금액"] = per_amount
+                update_payment_fields(ex_row["payment_id"], **fields)
+
+    if new_rows or target_count >= 2:
         invalidate_cache()
     return len(new_rows)
 
