@@ -381,6 +381,9 @@ else:
     _year_palette = ["#A78BFA", "#5B43C9", "#F472B6", "#34D399", "#60A5FA"]
     _color_map = {y: _year_palette[i % len(_year_palette)] for i, y in enumerate(_years)}
 
+    # 범례·trace 순서를 연도 오름차순으로 고정 (2023 → 2024 → 2025 → 2026)
+    _cat_orders = {"년도": _years}
+
     if period_unit == "월별":
         billed["월"] = billed["발행일"].dt.month
         agg = billed.groupby(["월", "년도"])["단가"].sum().reset_index()
@@ -388,6 +391,7 @@ else:
         fig = px.bar(
             agg, x="월", y="단가", color="년도",
             color_discrete_map=_color_map, barmode="group",
+            category_orders=_cat_orders,
             labels={"단가": "", "월": "", "년도": ""},
             custom_data=["년도", "period_label"],
         )
@@ -402,6 +406,7 @@ else:
         fig = px.bar(
             agg, x="분기", y="단가", color="년도",
             color_discrete_map=_color_map, barmode="group",
+            category_orders=_cat_orders,
             labels={"단가": "", "분기": "", "년도": ""},
             custom_data=["년도", "period_label"],
         )
@@ -415,6 +420,7 @@ else:
         fig = px.bar(
             agg, x="년도", y="단가",
             color="년도", color_discrete_map=_color_map,
+            category_orders=_cat_orders,
             labels={"단가": "", "년도": ""},
             custom_data=["년도", "period_label"],
         )
