@@ -470,7 +470,8 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
         # 부족한 회차 row 메모리 상에서 계산 (payments DF 활용 — 추가 read 안 함)
         existing = payments[payments["contract_id"] == cid] if not payments.empty else pd.DataFrame()
         existing_rounds = set(existing["회차"].astype(str)) if not existing.empty else set()
-        per_amount = float(c["총금액"] or 0) / notion_분납 if notion_분납 > 0 else 0
+        total_amount = float(c["총금액"] or 0)
+        per_amount = total_amount / notion_분납 if notion_분납 > 0 else 0
         # 고객입금액은 자동 입력 금지 — 실제 입금 확인 후 사용자가 수기 입력
         for i in range(1, notion_분납 + 1):
             if str(i) in existing_rounds:
@@ -481,6 +482,25 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
                 f"분납 {notion_분납}회차 자동 생성",
                 now.strftime("%Y-%m-%d %H:%M"),
             ])
+        # 기존 회차 중 금액이 총금액과 같은 분납 누락 케이스를 per_amount로 보정
+        # (수동 편집 보호 — 총금액 그대로인 경우에만 보정)
+        if notion_분납 >= 2 and not existing.empty and total_amount > 0:
+            col_금액 = PAYMENT_COLUMNS.index("금액") + 1
+            for _, ex_row in existing.iterrows():
+                ex_금액 = float(pd.to_numeric(ex_row.get("금액", 0), errors="coerce") or 0)
+                if abs(ex_금액 - total_amount) < 1:
+                    pid_lookup = ex_row["payment_id"]
+                    # payments DF의 시트 row index 찾기
+                    payment_records = payments  # already loaded
+                    sheet_row_idx = payment_records.index[
+                        payment_records["payment_id"] == pid_lookup
+                    ].tolist()
+                    if sheet_row_idx:
+                        row_idx = sheet_row_idx[0] + 2
+                        contract_batch.append({
+                            "range": rowcol_to_a1(row_idx, col_금액),
+                            "values": [[per_amount]],
+                        })
 
     # API 호출 모음: contracts batch_update + payments append (각 1 call)
     if contract_batch:
