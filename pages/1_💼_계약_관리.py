@@ -671,6 +671,23 @@ def _render_contract_card(c):
             # 실제 입금 확인 후 사용자가 수기 입력하는 정책.
             view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
 
+            # data_editor의 미저장 편집 내역을 view에 미리 적용 → 합계 실시간 반영
+            _editor_key = f"editor_{contract_id}"
+            _view_live = view.copy()
+            _editor_state = st.session_state.get(_editor_key, {})
+            for _row_idx, _changes in _editor_state.get("edited_rows", {}).items():
+                if _row_idx not in _view_live.index:
+                    continue
+                for _col, _val in _changes.items():
+                    if _col in _view_live.columns:
+                        _view_live.at[_row_idx, _col] = _val
+
+            # 합계 — 대납액 row 제외 (매출만)
+            _is_revenue = _view_live["결제방법"].astype(str).str.strip() != "대납액"
+            _sum_금액 = int(pd.to_numeric(_view_live.loc[_is_revenue, "금액"], errors="coerce").fillna(0).sum())
+            _sum_단가 = int(pd.to_numeric(_view_live.loc[_is_revenue, "단가"], errors="coerce").fillna(0).sum())
+            _sum_고객 = int(pd.to_numeric(_view_live["고객입금액"], errors="coerce").fillna(0).sum())
+
             def _bulk_apply_method():
                 val = st.session_state.get(f"bulk_pm_{contract_id}", "(미선택)")
                 new_val = "" if val == "(미선택)" else val
@@ -749,8 +766,12 @@ def _render_contract_card(c):
                 "background:white;color:#1E1B2E;font-weight:700;"
                 "justify-content:flex-end;" + _flex_base
             )
-            # 합계 셀은 placeholder로 잡고 data_editor 출력으로 채워 실시간 갱신
-            _sum_placeholders = [_h_cols[i + 2].empty() for i in range(3)]
+            for _i, _v in enumerate([_sum_금액, _sum_단가, _sum_고객]):
+                with _h_cols[_i + 2]:
+                    st.markdown(
+                        f"<div style='{_num_cell_style}'>{_v:,}원</div>",
+                        unsafe_allow_html=True,
+                    )
             with _h_cols[5]:
                 pass  # 입금일 빈 자리
 
@@ -806,17 +827,6 @@ def _render_contract_card(c):
                 num_rows="fixed",
                 key=f"editor_{contract_id}",
             )
-
-            # edited 기반 합계 계산 (대납액 row 제외) → placeholder에 즉시 반영
-            _e_rev = edited["결제방법"].astype(str).str.strip() != "대납액"
-            _sum_금액 = int(pd.to_numeric(edited.loc[_e_rev, "금액"], errors="coerce").fillna(0).sum())
-            _sum_단가 = int(pd.to_numeric(edited.loc[_e_rev, "단가"], errors="coerce").fillna(0).sum())
-            _sum_고객 = int(pd.to_numeric(edited["고객입금액"], errors="coerce").fillna(0).sum())
-            for _ph, _v in zip(_sum_placeholders, [_sum_금액, _sum_단가, _sum_고객]):
-                _ph.markdown(
-                    f"<div style='{_num_cell_style}'>{_v:,}원</div>",
-                    unsafe_allow_html=True,
-                )
 
             # 편집 결과 실시간 상태 미리보기
             status_emojis = ["✅ 입금" if pd.notna(d) else "⬜ 미입금" for d in edited["입금일"]]
