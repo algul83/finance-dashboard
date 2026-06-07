@@ -441,8 +441,12 @@ else:
         8: "#94A3B8",  # 임(壬) 水 — 파스텔 회청
         9: "#A8A8AE",  # 계(癸) 水 — 파스텔 회흑
     }
+
+    def _year_color(year_str: str) -> str:
+        return _CHEONGAN_COLOR[(int(year_str) - 4) % 10]
+
     _years = sorted(billed["년도"].unique())
-    _color_map = {y: _CHEONGAN_COLOR[(int(y) - 4) % 10] for y in _years}
+    _color_map = {y: _year_color(y) for y in _years}
 
     # 범례·trace 순서를 연도 오름차순으로 고정 (2023 → 2024 → 2025 → 2026)
     _cat_orders = {"년도": _years}
@@ -507,7 +511,7 @@ else:
         else:
             _hover = "<b>%{customdata[0]}년 %{customdata[1]}</b><br>%{y:,.0f}원<extra></extra>"
 
-    else:  # 서비스별
+    else:  # 서비스별 — 색은 전체 모드와 동일한 천간 연도색, 카테고리는 데이터 필터로 작용
         # 카테고리 토글 — 비우면 전체 fallback
         selected_cats = st.segmented_control(
             "카테고리",
@@ -521,7 +525,7 @@ else:
         if not selected_cats:
             selected_cats = list(_CATEGORY_ORDER)
 
-        # billed의 각 회차에 서비스명 → 카테고리 부여
+        # billed의 각 회차에 서비스명 → 카테고리 부여, 선택된 카테고리만 keep
         _b = billed.merge(
             contracts_for_unit[["contract_id", "서비스명"]],
             on="contract_id", how="left",
@@ -532,32 +536,64 @@ else:
         _b["카테고리"] = _b["_svc"].apply(_categorize_service)
         # 같은 회차가 같은 카테고리에 중복 매핑되는 경우(예: ConnectDI+ConnectISS) 1회만 카운트
         _b = _b.drop_duplicates(["payment_id", "카테고리"])
+        _b = _b[_b["카테고리"].isin(selected_cats)]
 
         if period_unit == "월별":
-            _b["기간"] = _b["발행일"].dt.strftime("%Y-%m")
+            _b["월"] = _b["발행일"].dt.month
+            agg = _b.groupby(["월", "년도"])["단가"].sum().reset_index()
+            agg["period_label"] = agg["월"].astype(str) + "월"
+            fig = px.bar(
+                agg, x="월", y="단가", color="년도",
+                color_discrete_map=_color_map, barmode="group",
+                category_orders=_cat_orders,
+                labels={"단가": "", "월": "", "년도": ""},
+                custom_data=["년도", "period_label"],
+            )
+            fig.update_xaxes(
+                tickmode="array", tickvals=list(range(1, 13)),
+                ticktext=[f"{m}월" for m in range(1, 13)],
+            )
         elif period_unit == "분기별":
-            _b["기간"] = (
-                _b["발행일"].dt.year.astype(str) + " Q"
-                + _b["발행일"].dt.quarter.astype(str)
+            _b["분기"] = _b["발행일"].dt.quarter
+            agg = _b.groupby(["분기", "년도"])["단가"].sum().reset_index()
+            agg["period_label"] = "Q" + agg["분기"].astype(str)
+            fig = px.bar(
+                agg, x="분기", y="단가", color="년도",
+                color_discrete_map=_color_map, barmode="group",
+                category_orders=_cat_orders,
+                labels={"단가": "", "분기": "", "년도": ""},
+                custom_data=["년도", "period_label"],
+            )
+            fig.update_xaxes(
+                tickmode="array", tickvals=[1, 2, 3, 4],
+                ticktext=["Q1", "Q2", "Q3", "Q4"],
             )
         elif period_unit == "연도별":
-            _b["기간"] = _b["발행일"].dt.year.astype(str)
+            agg = _b.groupby("년도")["단가"].sum().reset_index()
+            agg["period_label"] = agg["년도"]
+            fig = px.bar(
+                agg, x="년도", y="단가",
+                color="년도", color_discrete_map=_color_map,
+                category_orders=_cat_orders,
+                labels={"단가": "", "년도": ""},
+                custom_data=["년도", "period_label"],
+            )
+            fig.update_xaxes(type="category")
         else:  # 일별
-            _b["기간"] = _b["발행일"].dt.date.astype(str)
+            _b["일"] = _b["발행일"].dt.date
+            agg = _b.groupby("일")["단가"].sum().reset_index()
+            agg["period_label"] = agg["일"].astype(str)
+            fig = px.bar(
+                agg, x="일", y="단가",
+                color_discrete_sequence=["#A78BFA"],
+                labels={"단가": "", "일": ""},
+                custom_data=["period_label"],
+            )
 
-        agg = _b.groupby(["기간", "카테고리"])["단가"].sum().reset_index()
-        # 선택된 카테고리만 표시
-        agg = agg[agg["카테고리"].isin(selected_cats)]
-        _order_filtered = [c for c in _CATEGORY_ORDER if c in selected_cats]
-
-        fig = px.bar(
-            agg, x="기간", y="단가", color="카테고리",
-            color_discrete_map=_CATEGORY_COLORS,
-            category_orders={"카테고리": _order_filtered},
-            labels={"단가": "", "기간": "", "카테고리": ""},
-        )
-        fig.update_xaxes(type="category", categoryorder="category ascending")
-        _hover = "<b>%{fullData.name}</b><br>%{x}<br>%{y:,.0f}원<extra></extra>"
+        if period_unit == "일별":
+            _hover = "<b>%{customdata[0]}</b><br>%{y:,.0f}원<extra></extra>"
+        else:
+            _hover = "<b>%{customdata[0]}년 %{customdata[1]}</b><br>%{y:,.0f}원<extra></extra>"
 
     fig.update_traces(
         marker=dict(line=dict(width=0), opacity=0.92),
