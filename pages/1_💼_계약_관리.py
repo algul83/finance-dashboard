@@ -488,7 +488,12 @@ if search_query and customer_contracts.empty:
 # 일회성 계약은 구독종료일이 없으므로 구독시작일 기준으로 종료 판단,
 # 신규/갱신 등 구독형 계약은 구독종료일 기준.
 _today = pd.Timestamp.today().normalize()
-_is_onetime = customer_contracts["신규갱신"].astype(str).str.strip() == "일회성"
+# 일회성 판정: 신규갱신=="일회성" 또는 정산유형에 "1회" 포함 (예: "1회정산").
+# 노션에서 신규갱신은 비어있어도 정산유형으로 일회성을 표현하는 케이스가 있어 둘 다 본다.
+_is_onetime = (
+    (customer_contracts["신규갱신"].astype(str).str.strip() == "일회성")
+    | customer_contracts["정산유형"].fillna("").astype(str).str.contains("1회", na=False)
+)
 _ended_subscription = (
     ~_is_onetime
     & customer_contracts["구독종료일"].notna()
