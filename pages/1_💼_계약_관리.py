@@ -680,12 +680,9 @@ def _render_contract_card(c):
                 "payment_id", "회차", "청구예정일", "발행일", "결제방법",
                 "금액", "단가", "고객입금액", "입금일",
             ]]
-            # 해외대조약은 고객입금액 공란 유지 (수기 입력)
-            # 그 외 서비스만 0 → 금액 fallback (기존 0 데이터 호환)
-            if not ct.is_overseas(c.get("서비스명")):
-                view.loc[view["고객입금액"] == 0, "고객입금액"] = view.loc[view["고객입금액"] == 0, "금액"]
-            else:
-                view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
+            # 고객입금액 0/빈셀은 빈칸으로 표시 — 자동 fallback 제거.
+            # 실제 입금 확인 후 사용자가 수기 입력하는 정책.
+            view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
 
             # 합계 strip — st.columns 기반 (병합된 영역에 결제방법 일괄 셀렉트박스)
             _sum_금액 = int(view["금액"].fillna(0).sum())
