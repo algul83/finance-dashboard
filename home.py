@@ -387,11 +387,12 @@ else:
     if period_unit == "월별":
         billed["월"] = billed["발행일"].dt.month
         agg = billed.groupby(["월", "년도"])["단가"].sum().reset_index()
+        agg["period_label"] = agg["월"].astype(str) + "월"
         fig = px.bar(
             agg, x="월", y="단가", color="년도",
             color_discrete_map=_color_map, barmode="group",
             labels={"단가": "", "월": "", "년도": ""},
-            custom_data=["년도"],
+            custom_data=["년도", "period_label"],
         )
         fig.update_xaxes(
             tickmode="array", tickvals=list(range(1, 13)),
@@ -400,11 +401,12 @@ else:
     elif period_unit == "분기별":
         billed["분기"] = billed["발행일"].dt.quarter
         agg = billed.groupby(["분기", "년도"])["단가"].sum().reset_index()
+        agg["period_label"] = "Q" + agg["분기"].astype(str)
         fig = px.bar(
             agg, x="분기", y="단가", color="년도",
             color_discrete_map=_color_map, barmode="group",
             labels={"단가": "", "분기": "", "년도": ""},
-            custom_data=["년도"],
+            custom_data=["년도", "period_label"],
         )
         fig.update_xaxes(
             tickmode="array", tickvals=[1, 2, 3, 4],
@@ -412,26 +414,35 @@ else:
         )
     elif period_unit == "연도별":
         agg = billed.groupby("년도")["단가"].sum().reset_index()
+        agg["period_label"] = agg["년도"]
         fig = px.bar(
             agg, x="년도", y="단가",
             color="년도", color_discrete_map=_color_map,
             labels={"단가": "", "년도": ""},
+            custom_data=["년도", "period_label"],
         )
         # x축에 연도(category)만 표기 — 추가 축선·tick 마크 없이
         fig.update_xaxes(type="category")
     else:  # 일별
         billed["일"] = billed["발행일"].dt.date
         agg = billed.groupby("일")["단가"].sum().reset_index()
+        agg["period_label"] = agg["일"].astype(str)
         fig = px.bar(
             agg, x="일", y="단가",
             color_discrete_sequence=["#A78BFA"],
             labels={"단가": "", "일": ""},
+            custom_data=["period_label"],
         )
 
-    # 라운드 처리 — Plotly 막대는 native border-radius가 없어 marker로 부드럽게
+    # 호버 — 연도 + 기간 라벨 같이 표시
+    if period_unit == "일별":
+        _hover = "<b>%{customdata[0]}</b><br>%{y:,.0f}원<extra></extra>"
+    else:
+        _hover = "<b>%{customdata[0]}년 %{customdata[1]}</b><br>%{y:,.0f}원<extra></extra>"
+
     fig.update_traces(
         marker=dict(line=dict(width=0), opacity=0.92),
-        hovertemplate="<b>%{x}</b><br>%{y:,.0f}원<extra></extra>",
+        hovertemplate=_hover,
     )
     fig.update_layout(
         height=380,
@@ -471,6 +482,92 @@ else:
 
     total_issued = agg["단가"].sum()
     st.caption(f"누적 발행 매출: **{total_issued:,.0f}원** · {total_issued/1e8:.2f}억")
+
+    # ----- 3줄 자동 분석 -----
+    _year_totals = billed.groupby("년도")["단가"].sum().sort_index()
+    _analysis_lines = []
+
+    # 1) 최신 연도 vs 직전 연도 성장
+    if len(_year_totals) >= 2:
+        _latest_year = _year_totals.index[-1]
+        _prev_year = _year_totals.index[-2]
+        _latest = _year_totals.iloc[-1]
+        _prev = _year_totals.iloc[-2]
+        if _prev > 0:
+            _growth = (_latest - _prev) / _prev * 100
+            _trend_icon = "📈" if _growth >= 0 else "📉"
+            _analysis_lines.append(
+                f"{_trend_icon} **{_latest_year}년 매출 {_latest/1e8:.2f}억** — "
+                f"전년({_prev_year}년) 대비 **{_growth:+.1f}%** "
+                f"{'성장세 유지' if _growth >= 10 else ('완만한 증가' if _growth >= 0 else '감소세 — 신규 영업 강화 필요')}"
+            )
+        else:
+            _analysis_lines.append(
+                f"📊 **{_latest_year}년 매출 {_latest/1e8:.2f}억** · 전년 데이터 없어 비교 불가"
+            )
+    elif len(_year_totals) == 1:
+        _yr = _year_totals.index[0]
+        _analysis_lines.append(
+            f"📊 **{_yr}년 매출 {_year_totals.iloc[0]/1e8:.2f}억** · 단일 연도 데이터"
+        )
+
+    # 2) 분기/월 편중도 (좋은 점 또는 유의점)
+    if period_unit == "분기별" and "분기" in billed.columns:
+        _q_totals = billed.groupby("분기")["단가"].sum()
+        _top_q = _q_totals.idxmax()
+        _q_share = _q_totals.max() / _q_totals.sum() * 100 if _q_totals.sum() > 0 else 0
+        if _q_share > 40:
+            _analysis_lines.append(
+                f"⚠️ **Q{_top_q}** 분기에 매출 {_q_share:.0f}% 편중 — "
+                f"분기 분산 또는 안정 매출원 확보 검토 필요"
+            )
+        else:
+            _analysis_lines.append(
+                f"✅ 분기별 매출 비교적 균등 (최대 분기 비중 {_q_share:.0f}%) — 안정적 분포"
+            )
+    elif period_unit == "월별" and "월" in billed.columns:
+        _m_totals = billed.groupby("월")["단가"].sum()
+        _top_m = _m_totals.idxmax()
+        _m_share = _m_totals.max() / _m_totals.sum() * 100 if _m_totals.sum() > 0 else 0
+        if _m_share > 25:
+            _analysis_lines.append(
+                f"⚠️ **{_top_m}월**에 매출 {_m_share:.0f}% 편중 — "
+                f"월별 분산 필요"
+            )
+        else:
+            _analysis_lines.append(
+                f"✅ 월별 매출 분산 양호 (최대 월 비중 {_m_share:.0f}%)"
+            )
+    elif period_unit == "연도별":
+        if len(_year_totals) >= 2:
+            _cv = _year_totals.std() / _year_totals.mean() if _year_totals.mean() > 0 else 0
+            if _cv > 0.5:
+                _analysis_lines.append(
+                    f"⚠️ 연도별 매출 변동성 큰 편 (표준편차/평균 {_cv*100:.0f}%) — "
+                    f"안정 매출 확보 전략 필요"
+                )
+            else:
+                _analysis_lines.append(
+                    f"✅ 연도별 매출 흐름 안정 (편차계수 {_cv*100:.0f}%) — 꾸준한 성장"
+                )
+
+    # 3) 전체 누계 + 평균 기간 매출
+    if len(agg) > 0 and total_issued > 0:
+        _avg_period = total_issued / len(agg)
+        _analysis_lines.append(
+            f"💡 누적 매출 **{total_issued/1e8:.2f}억** · "
+            f"{period_unit} 평균 매출 **{_avg_period/1e6:.1f}백만원** "
+            f"({len(agg)}개 기간 기준)"
+        )
+
+    if _analysis_lines:
+        st.markdown(
+            "<div style='background:#FAFAFC;border:1px solid #EDECF1;border-radius:8px;"
+            "padding:14px 18px;margin-top:10px;font-size:0.88rem;color:#374151;line-height:1.7'>"
+            + "<br>".join(_analysis_lines)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
 
 # ============== 서비스별 매출 ==============
 st.markdown("## 💎 서비스별 매출")
