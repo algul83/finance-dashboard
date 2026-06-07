@@ -508,6 +508,19 @@ else:
             _hover = "<b>%{customdata[0]}년 %{customdata[1]}</b><br>%{y:,.0f}원<extra></extra>"
 
     else:  # 서비스별
+        # 카테고리 토글 — 비우면 전체 fallback
+        selected_cats = st.segmented_control(
+            "카테고리",
+            options=_CATEGORY_ORDER,
+            selection_mode="multi",
+            default=_CATEGORY_ORDER,
+            key="revenue_categories",
+            label_visibility="collapsed",
+            help="원하는 카테고리만 선택하면 그 카테고리들만 표시 (빈 선택 시 전체)",
+        )
+        if not selected_cats:
+            selected_cats = list(_CATEGORY_ORDER)
+
         # billed의 각 회차에 서비스명 → 카테고리 부여
         _b = billed.merge(
             contracts_for_unit[["contract_id", "서비스명"]],
@@ -533,11 +546,14 @@ else:
             _b["기간"] = _b["발행일"].dt.date.astype(str)
 
         agg = _b.groupby(["기간", "카테고리"])["단가"].sum().reset_index()
+        # 선택된 카테고리만 표시
+        agg = agg[agg["카테고리"].isin(selected_cats)]
+        _order_filtered = [c for c in _CATEGORY_ORDER if c in selected_cats]
 
         fig = px.bar(
             agg, x="기간", y="단가", color="카테고리",
             color_discrete_map=_CATEGORY_COLORS,
-            category_orders={"카테고리": _CATEGORY_ORDER},
+            category_orders={"카테고리": _order_filtered},
             labels={"단가": "", "기간": "", "카테고리": ""},
         )
         fig.update_xaxes(type="category", categoryorder="category ascending")
