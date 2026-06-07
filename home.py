@@ -358,14 +358,11 @@ except Exception as e:
     st.warning(f"⚠️ 계약 관리 시트 로드 실패: {str(e)[:120]}")
 
 if not payments_df.empty and not contracts_for_unit.empty:
-    # 활성 계약의 payment만 대상으로 단가 join
+    # 활성 계약의 payment row만 대상 — 단가는 payment row 자체에 저장
     active_pay = payments_df[payments_df["contract_id"].isin(contracts_for_unit["contract_id"])]
-    billed = active_pay.merge(
-        contracts_for_unit[["contract_id", "단가"]],
-        on="contract_id",
-        how="left",
-    )
-    billed = billed[billed["발행일"].notna()].copy()
+    billed = active_pay[active_pay["발행일"].notna()].copy()
+    # 대납액은 매출이 아니므로 제외 (회사가 선납 후 고객에게 환수받는 pass-through)
+    billed = billed[billed["결제방법"].astype(str).str.strip() != "대납액"]
     billed["단가"] = pd.to_numeric(billed["단가"], errors="coerce").fillna(0)
 else:
     billed = pd.DataFrame()

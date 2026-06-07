@@ -653,35 +653,28 @@ def _render_contract_card(c):
         else:
             # 표시용 view: 회차·청구예정일·발행일·결제방법·금액·단가·고객입금액·입금일
             view = contract_payments.sort_values("회차")[[
-                "payment_id", "회차", "청구예정일", "발행일", "결제방법", "금액", "고객입금액", "입금일",
+                "payment_id", "회차", "청구예정일", "발행일", "결제방법",
+                "금액", "단가", "고객입금액", "입금일",
             ]].copy()
             view = view.reset_index(drop=True)
             for col in ("청구예정일", "발행일", "입금일"):
                 view[col] = pd.to_datetime(view[col], errors="coerce")
             view["금액"] = view["금액"].astype(float).round().astype("Int64")
+            view["단가"] = view["단가"].astype(float).round().astype("Int64")
             view["고객입금액"] = view["고객입금액"].astype(float).round().astype("Int64")
-            # 계약 단위 단가를 모든 회차 row에 동일 값으로 표시
-            # (Streamlit data_editor + Int64 broadcast 충돌 회피 위해 명시적 Series 생성)
-            try:
-                _단가_val = int(float(c.get("단가") or 0))
-            except (TypeError, ValueError):
-                _단가_val = 0
-            view["단가"] = pd.Series([_단가_val] * len(view), dtype="Int64", index=view.index)
             # 결제방법은 payment row 단위 — 시트의 row 값 그대로 사용
             # (해외대조약은 세금계산서/대납액 분리; 그 외는 계약 단위 기본값으로 일괄)
             view["결제방법"] = view["결제방법"].fillna("").astype(str)
-            # 컬럼 순서 재정렬: 발행일 → 결제방법 → 매출액 → 단가
-            view = view[[
-                "payment_id", "회차", "청구예정일", "발행일", "결제방법",
-                "금액", "단가", "고객입금액", "입금일",
-            ]]
+            # 단가 0은 빈칸 표시 (수기 입력 전 상태)
+            view.loc[view["단가"] == 0, "단가"] = pd.NA
             # 고객입금액 0/빈셀은 빈칸으로 표시 — 자동 fallback 제거.
             # 실제 입금 확인 후 사용자가 수기 입력하는 정책.
             view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
 
-            # 합계 strip — st.columns 기반 (병합된 영역에 결제방법 일괄 셀렉트박스)
-            _sum_금액 = int(view["금액"].fillna(0).sum())
-            _sum_단가 = int(pd.to_numeric(view["단가"], errors="coerce").fillna(0).sum())
+            # 합계 strip — 매출 합계는 대납액 row 제외 (대납액은 매출이 아닌 pass-through)
+            _is_revenue = view["결제방법"].astype(str).str.strip() != "대납액"
+            _sum_금액 = int(view.loc[_is_revenue, "금액"].fillna(0).sum())
+            _sum_단가 = int(pd.to_numeric(view.loc[_is_revenue, "단가"], errors="coerce").fillna(0).sum())
             _sum_고객 = int(pd.to_numeric(view["고객입금액"], errors="coerce").fillna(0).sum())
 
             def _bulk_apply_method():
@@ -803,7 +796,7 @@ def _render_contract_card(c):
                         "단가",
                         format="localized",
                         width=150,
-                        help="계약 단위 단가. 어느 행이든 수정하면 저장 시 계약 단위로 반영됩니다.",
+                        help="회차 단위 단가. 해외대조약은 세금계산서/대납액 각각 독립 입력하세요.",
                     ),
                     "고객입금액": st.column_config.NumberColumn(
                         "고객 입금액",
@@ -842,12 +835,7 @@ def _render_contract_card(c):
                         value=int(c["분납회차"]) if pd.notna(c["분납회차"]) else 0,
                         key=f"분납_{contract_id}",
                     )
-                    new_단가 = st.number_input(
-                        "단가 (단위당 가격)",
-                        min_value=0, step=10000,
-                        value=int(c["단가"]) if pd.notna(c.get("단가")) and c["단가"] else 0,
-                        key=f"단가_{contract_id}",
-                    )
+                    st.caption("💡 단가는 결제 회차 표에서 회차별로 입력하세요 (해외대조약은 세금계산서/대납액 독립)")
                     _curr_pay_method = str(c.get("결제방법") or "").strip()
                     _pay_options = ["(미선택)"] + ct.PAYMENT_METHODS
                     _pay_idx = (
@@ -875,7 +863,6 @@ def _render_contract_card(c):
                         ct.update_contract_meta(
                             contract_id,
                             분납회차=new_분납 if new_분납 > 0 else "",
-                            단가=new_단가 if new_단가 > 0 else "",
                             결제방법=(new_결제방법 if new_결제방법 != "(미선택)" else ""),
                             구독시작일=new_구독시작,
                             구독종료일=new_구독종료,
@@ -899,14 +886,8 @@ def _render_contract_card(c):
             if save_clicked:
                 contract_changes = []
 
-                # 단가 컬럼: 어느 row든 변경되면 계약 단위로 반영
-                orig_단가 = int(c.get("단가") or 0)
-                edited_단가 = pd.to_numeric(edited["단가"], errors="coerce").fillna(0).astype(int)
-                new_단가_vals = edited_단가[edited_단가 != orig_단가].unique()
-                if len(new_단가_vals) > 0:
-                    new_단가 = int(new_단가_vals[0])
-                    ct.update_contract_meta(contract_id, 단가=new_단가 if new_단가 > 0 else "")
-                    contract_changes.append("단가")
+                # 단가는 payment row 단위 — per-row diff에서 처리
+                # (해외대조약: 세금계산서/대납액 각각 독립 입력)
 
                 # 결제방법은 회차 단위로 변경되도록 per-row diff에서 처리
                 # (해외대조약: 세금계산서/대납액 분리; 그 외: 사용자가 직접 수정)
@@ -936,7 +917,7 @@ def _render_contract_card(c):
                     new = edited.loc[idx]
                     pid = orig["payment_id"]
                     diffs = {}
-                    for col in ("청구예정일", "발행일", "결제방법", "입금일", "금액", "고객입금액"):
+                    for col in ("청구예정일", "발행일", "결제방법", "입금일", "금액", "단가", "고객입금액"):
                         a, b = orig[col], new[col]
                         if pd.isna(a) and pd.isna(b):
                             continue

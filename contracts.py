@@ -54,6 +54,7 @@ PAYMENT_COLUMNS = [
     "입금완료",          # "TRUE"/"FALSE"
     "입금일",
     "금액",              # 세금계산서 발행 금액
+    "단가",              # 회차 단위 단가 (해외대조약: 세금계산서/대납액 각각 독립 입력)
     "고객입금액",        # 실제 입금된 금액 (관세·부가세 대납 등으로 발행액과 다를 수 있음)
     "메모",
     "created_at",
@@ -101,6 +102,7 @@ def load_payments() -> pd.DataFrame:
         return pd.DataFrame(columns=PAYMENT_COLUMNS)
     df = pd.DataFrame(data)
     df["금액"] = pd.to_numeric(df.get("금액", 0), errors="coerce").fillna(0)
+    df["단가"] = pd.to_numeric(df.get("단가", 0), errors="coerce").fillna(0)
     df["고객입금액"] = pd.to_numeric(df.get("고객입금액", 0), errors="coerce").fillna(0)
     df["입금완료"] = df.get("입금완료", "FALSE").astype(str).str.upper() == "TRUE"
     df["결제방법"] = df.get("결제방법", "").astype(str).fillna("")
@@ -231,34 +233,44 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             per_amount = plan["총금액"] / n_rounds if n_rounds > 0 else plan["총금액"]
             overseas = plan["해외"]
 
-            row_seq = 0
+            # 일반: N 세금계산서 / 해외대조약: N 세금계산서 + 1 대납액 = N+1 rows
+            # 단가는 회차 단위 — 사용자가 수기 입력 (해외대조약 세금계산서/대납액 독립)
             for i in range(1, n_rounds + 1):
-                is_first_round = (i == 1)
-                # 한 분납 회차당 row 정의 — 해외대조약은 [세금계산서, 대납액] 2개, 그 외는 [공란] 1개
-                row_specs = (
-                    [("세금계산서", per_amount), ("대납액", "")]
-                    if overseas else [("", per_amount)]
-                )
-                for method, amount in row_specs:
-                    row_seq += 1
-                    pid = f"P{int(time.time() * 1000)}{len(payment_rows):03d}"
-                    memo_seed = "Notion 동기화 자동 생성" if (is_first_round and method != "대납액") else f"{n_rounds}회 분납 자동 생성"
-                    if overseas:
-                        memo_seed = f"{memo_seed} · {method}"
-                    payment_rows.append({
-                        "payment_id": pid,
-                        "contract_id": cid,
-                        "회차": str(row_seq),
-                        "청구예정일": "",
-                        "발행일": "",
-                        "결제방법": method,
-                        "입금완료": "FALSE",
-                        "입금일": "",
-                        "금액": amount,
-                        "고객입금액": "",  # 실제 입금 확인 후 수기 입력
-                        "메모": memo_seed,
-                        "created_at": now.strftime("%Y-%m-%d %H:%M"),
-                    })
+                pid = f"P{int(time.time() * 1000)}{len(payment_rows):03d}"
+                method = "세금계산서" if overseas else ""
+                payment_rows.append({
+                    "payment_id": pid,
+                    "contract_id": cid,
+                    "회차": str(i),
+                    "청구예정일": "",
+                    "발행일": "",
+                    "결제방법": method,
+                    "입금완료": "FALSE",
+                    "입금일": "",
+                    "금액": per_amount,
+                    "단가": "",  # 회차 단위 수기 입력
+                    "고객입금액": "",  # 실제 입금 확인 후 수기 입력
+                    "메모": "Notion 동기화 자동 생성" if i == 1 else f"{n_rounds}회 분납 자동 생성",
+                    "created_at": now.strftime("%Y-%m-%d %H:%M"),
+                })
+            # 해외대조약 — 대납액 1개 row 추가 (계약당 1번)
+            if overseas:
+                pid = f"P{int(time.time() * 1000)}{len(payment_rows):03d}"
+                payment_rows.append({
+                    "payment_id": pid,
+                    "contract_id": cid,
+                    "회차": str(n_rounds + 1),
+                    "청구예정일": "",
+                    "발행일": "",
+                    "결제방법": "대납액",
+                    "입금완료": "FALSE",
+                    "입금일": "",
+                    "금액": "",  # 실제 대납액 확인 후 수기 입력
+                    "단가": "",  # 대납 단가 수기 입력 (세금계산서 단가와 독립)
+                    "고객입금액": "",
+                    "메모": "해외대조약 대납액 (수기 입력)",
+                    "created_at": now.strftime("%Y-%m-%d %H:%M"),
+                })
         if payment_rows:
             ws_p.append_rows(
                 [[p.get(col, "") for col in PAYMENT_COLUMNS] for p in payment_rows],
@@ -490,24 +502,30 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
         total_amount = float(c["총금액"] or 0)
         per_amount = total_amount / notion_분납 if notion_분납 > 0 else 0
         overseas = is_overseas(c.get("서비스명"))
-        target_rows = notion_분납 * 2 if overseas else notion_분납
+        # 일반: N rows / 해외대조약: N 세금계산서 + 1 대납액 = N+1 rows
         # 고객입금액은 자동 입력 금지 — 실제 입금 확인 후 사용자가 수기 입력
-        for i in range(1, target_rows + 1):
+        for i in range(1, notion_분납 + 1):
             if str(i) in existing_rounds:
                 continue
             pid = f"P{int(time.time() * 1000)}{len(payments_to_add):03d}"
-            if overseas:
-                # 홀수 회차=세금계산서, 짝수=대납액
-                method = "세금계산서" if i % 2 == 1 else "대납액"
-                amount = per_amount if method == "세금계산서" else ""
-            else:
-                method = ""
-                amount = per_amount
+            method = "세금계산서" if overseas else ""
+            # PAYMENT_COLUMNS 순서: payment_id, contract_id, 회차, 청구예정일, 발행일,
+            #   결제방법, 입금완료, 입금일, 금액, 단가, 고객입금액, 메모, created_at
             payments_to_add.append([
-                pid, cid, str(i), "", "", method, "FALSE", "", amount, "",
+                pid, cid, str(i), "", "", method, "FALSE", "", per_amount, "", "",
                 f"분납 {notion_분납}회차 자동 생성",
                 now.strftime("%Y-%m-%d %H:%M"),
             ])
+        if overseas:
+            # 대납액 row — 계약당 1개만 (마지막 회차 우측)
+            대납_round = str(notion_분납 + 1)
+            if 대납_round not in existing_rounds:
+                pid = f"P{int(time.time() * 1000)}{len(payments_to_add):03d}"
+                payments_to_add.append([
+                    pid, cid, 대납_round, "", "", "대납액", "FALSE", "", "", "", "",
+                    "해외대조약 대납액 (수기 입력)",
+                    now.strftime("%Y-%m-%d %H:%M"),
+                ])
         # 기존 회차 중 금액이 총금액과 같은 분납 누락 케이스를 per_amount로 보정
         # (수동 편집 보호 — 총금액 그대로인 경우에만 보정)
         if notion_분납 >= 2 and not existing.empty and total_amount > 0:
@@ -559,21 +577,16 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
         is_overseas(contract_row.iloc[0]["서비스명"])
         if not contract_row.empty else False
     )
-    target_rows = target_count * 2 if overseas else target_count
 
     per_amount = float(total_amount or 0) / target_count if target_count > 0 else 0
     now = pd.Timestamp.now()
     new_rows = []
-    for i in range(1, target_rows + 1):
+    # 일반: N rows / 해외대조약: N 세금계산서 + 1 대납액 = N+1 rows
+    for i in range(1, target_count + 1):
         if str(i) in existing_rounds:
             continue
         pid = f"P{int(time.time() * 1000)}{len(new_rows):03d}"
-        if overseas:
-            method = "세금계산서" if i % 2 == 1 else "대납액"
-            amount = per_amount if method == "세금계산서" else ""
-        else:
-            method = ""
-            amount = per_amount
+        method = "세금계산서" if overseas else ""
         new_rows.append({
             "payment_id": pid,
             "contract_id": contract_id,
@@ -583,11 +596,32 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
             "결제방법": method,
             "입금완료": "FALSE",
             "입금일": "",
-            "금액": amount,
+            "금액": per_amount,
+            "단가": "",  # 회차 단위 수기 입력
             "고객입금액": "",
             "메모": f"분납 {target_count}회차 자동 생성",
             "created_at": now.strftime("%Y-%m-%d %H:%M"),
         })
+    if overseas:
+        # 대납액 row — 계약당 1개만
+        대납_round = str(target_count + 1)
+        if 대납_round not in existing_rounds:
+            pid = f"P{int(time.time() * 1000)}{len(new_rows):03d}"
+            new_rows.append({
+                "payment_id": pid,
+                "contract_id": contract_id,
+                "회차": 대납_round,
+                "청구예정일": "",
+                "발행일": "",
+                "결제방법": "대납액",
+                "입금완료": "FALSE",
+                "입금일": "",
+                "금액": "",
+                "단가": "",  # 대납 단가 수기 입력 (세금계산서 단가와 독립)
+                "고객입금액": "",
+                "메모": "해외대조약 대납액 (수기 입력)",
+                "created_at": now.strftime("%Y-%m-%d %H:%M"),
+            })
 
     if new_rows:
         ws = get_worksheet("Payments")
