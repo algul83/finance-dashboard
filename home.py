@@ -810,51 +810,6 @@ else:
             unsafe_allow_html=True,
         )
 
-# ============== 서비스별 매출 ==============
-st.markdown("## 💎 서비스별 매출")
-st.markdown(
-    '<div class="sec-meta">확정 건 — 카테고리별 매출</div>',
-    unsafe_allow_html=True,
-)
-
-# 서비스 → 카테고리 매핑은 매출 추이 섹션에서 hoist (_SERVICE_CATEGORY, _categorize_service)
-confirmed_exp = explode_services(confirmed)
-confirmed_exp["카테고리"] = confirmed_exp["서비스명"].astype(str).apply(_categorize_service)
-
-svc_agg = (
-    confirmed_exp.groupby("카테고리")
-    .agg(건수=("name", "count"), 매출=("총매출", "sum"))
-    .reset_index()
-    .sort_values("매출", ascending=False)
-)
-
-if not svc_agg.empty:
-    fig = px.bar(
-        svc_agg.sort_values("매출"),
-        y="카테고리", x="매출",
-        orientation="h",
-        labels={"매출": "매출 (원)", "카테고리": ""},
-        color_discrete_sequence=[PRIMARY],
-        text="매출",
-        custom_data=["건수"],
-    )
-    fig.update_traces(
-        texttemplate="%{text:,.0f}", textposition="outside",
-        marker_line_width=0,
-        hovertemplate="<b>%{y}</b><br>매출 %{x:,.0f}원<br>%{customdata[0]}건<extra></extra>",
-    )
-    fig.update_layout(
-        height=max(340, 40 * len(svc_agg)),
-        margin=dict(l=0, r=100, t=10, b=0),
-        plot_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#F0EFF5", title=""),
-        yaxis=dict(title=""),
-        font=dict(family="Pretendard, sans-serif", size=12),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("확정 매출 데이터 없음.")
-
 # ============== 신규 vs 갱신 vs 일회성 ==============
 st.markdown("## 🆕 신규 · 갱신 · 일회성")
 st.markdown(
