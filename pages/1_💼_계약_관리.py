@@ -302,8 +302,18 @@ c4.markdown(
 )
 
 # ============== 계약 검색 ==============
+# 다른 페이지(회계 관리 등)에서 ?q=<text>로 진입하면 그 텍스트로 검색어 자동 설정
+_q_param = st.query_params.get("q", "")
+if _q_param and st.session_state.get("contract_search", "") != _q_param:
+    st.session_state["contract_search"] = _q_param
+
+
 def _clear_contract_search():
     st.session_state["contract_search"] = ""
+    try:
+        del st.query_params["q"]
+    except KeyError:
+        pass
 
 
 col_in, col_clear = st.columns([6, 1])

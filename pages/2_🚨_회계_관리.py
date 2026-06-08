@@ -7,12 +7,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
 
 import contracts as ct
-from auth import require_auth
+from auth import auth_query_suffix, require_auth
 
 # ============== Palette ==============
 PRIMARY = "#5B43C9"
@@ -347,8 +348,13 @@ elif overdue_issue.empty:
     st.info(f"'{search_query}' 검색 결과 없음 (전체 발행 누락 {len(overdue_all)}회차).")
 else:
     view = overdue_issue[[
-        "기준일", "기준", "경과일", "고객기관", "건명", "회차", "금액", "메모",
+        "기준일", "기준", "경과일", "고객기관", "건명", "회차", "금액",
     ]].copy()
+    # 건명을 클릭하면 계약 관리 페이지로 이동 + 해당 건명으로 자동 검색
+    _auth_q = auth_query_suffix()
+    view["계약 상세"] = view["건명"].apply(
+        lambda b: f"./계약_관리?q={quote(str(b))}{_auth_q}"
+    )
     view = view.sort_values("경과일", ascending=False, na_position="last").reset_index(drop=True)
     st.dataframe(
         view,
@@ -364,7 +370,12 @@ else:
             "건명": st.column_config.TextColumn("건명"),
             "회차": st.column_config.TextColumn("회차", width="small"),
             "금액": st.column_config.NumberColumn("예정 발행액 (원)", format="localized"),
-            "메모": st.column_config.TextColumn("메모"),
+            "계약 상세": st.column_config.LinkColumn(
+                "계약 상세",
+                display_text="펼치기 →",
+                width="small",
+                help="계약 관리 페이지에서 해당 건명으로 자동 검색됩니다",
+            ),
         },
         hide_index=True,
         use_container_width=True,
