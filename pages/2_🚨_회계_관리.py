@@ -12,6 +12,7 @@ from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 
+import card_payments as cp
 import contracts as ct
 from auth import auth_query_suffix, require_auth
 
@@ -383,6 +384,81 @@ else:
     st.caption(
         f"합계 **{overdue_issue['금액'].sum():,.0f}원** · {len(overdue_issue)}회차 · "
         f"최장 경과 {int(overdue_issue['경과일'].max())}일"
+    )
+
+# ============== 카드결제 정산 ==============
+st.markdown("## 💳 카드결제 정산")
+st.markdown(
+    '<div class="sec-meta">이노페이/토스 정산내역 엑셀 업로드 → 자동 매칭</div>',
+    unsafe_allow_html=True,
+)
+
+up_col, pg_col = st.columns([4, 1])
+with pg_col:
+    pg_sel = st.selectbox("PG", ["이노페이", "토스"], key="card_pg_sel")
+with up_col:
+    uploaded = st.file_uploader(
+        "정산내역 엑셀 업로드 (.xls / .xlsx)",
+        type=["xls", "xlsx"],
+        key="card_upload",
+        help="이노페이는 HTML 위장 .xls 파일도 자동 인식",
+    )
+
+if uploaded is not None:
+    try:
+        if pg_sel == "이노페이":
+            parsed = cp.parse_innopay(uploaded)
+        else:
+            st.info("토스 PG 파서는 다음 단계에서 추가 예정 — 현재는 이노페이만 지원")
+            parsed = pd.DataFrame()
+    except Exception as e:
+        st.error(f"파싱 실패: {type(e).__name__}: {e}")
+        parsed = pd.DataFrame()
+
+    if not parsed.empty:
+        st.caption(f"파싱 성공: **{len(parsed)}건** (승인 {(parsed['상태']=='승인').sum()}건 / 취소 {(parsed['상태']!='승인').sum()}건)")
+        st.dataframe(
+            parsed[["결제일", "구매자", "거래금액", "정산금액", "카드사", "상품명", "상태"]],
+            hide_index=True,
+            use_container_width=True,
+        )
+        if st.button("📥 시트에 저장 + 자동 매칭", type="primary", key="card_save"):
+            with st.spinner("매칭 중..."):
+                result = cp.auto_match_and_save(parsed, contracts_df, payments_df)
+            st.success(
+                f"✅ {result['saved']}건 저장 · 자동매칭 {result['auto']} · "
+                f"다중후보 {result['multi']} · 미매칭 {result['miss']}"
+            )
+            st.rerun()
+
+# 저장된 카드결제 — 미매칭/다중후보 우선 표시
+try:
+    card_df = cp.load_card_payments()
+except Exception as e:
+    card_df = pd.DataFrame()
+    st.warning(f"CardPayments 시트 로드 실패: {str(e)[:120]}")
+
+if not card_df.empty:
+    pending = card_df[card_df["매칭_상태"].isin(["미매칭", "다중"])]
+    st.markdown(f"### 🔧 미매칭/다중 후보 ({len(pending)}건)")
+    if pending.empty:
+        st.success("모든 카드결제가 자동 매칭 완료. ✅")
+    else:
+        st.dataframe(
+            pending[[
+                "결제일", "구매자", "거래금액", "카드사", "상품명",
+                "매칭_상태", "거래번호",
+            ]],
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.caption("💡 미매칭/다중 row는 향후 수동 매칭 UI에서 회차를 직접 지정할 예정 (단계 2).")
+
+    # 자동·수동 매칭된 카드결제 요약
+    matched = card_df[card_df["매칭_상태"].isin(["자동", "수동"])]
+    st.caption(
+        f"누적 카드결제: **{len(card_df)}건** · 매칭 완료 {len(matched)} · "
+        f"매칭 거래액 합계 {matched['거래금액'].sum():,.0f}원"
     )
 
 # ============== 안내 ==============

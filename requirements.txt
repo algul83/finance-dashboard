@@ -6,3 +6,5 @@ python-dotenv>=1.0
 gspread>=6.0
 google-auth>=2.30
 google-api-python-client>=2.130
+lxml>=4.9
+html5lib>=1.1
