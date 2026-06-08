@@ -957,6 +957,37 @@ def _render_contract_card(c):
                     if diffs:
                         ct.update_payment_fields(pid, **diffs)
                         changes_count += 1
+
+                # 해외대조약: 1회차 세금계산서의 청구예정일/발행일을 대납액 row(들)에 그대로 복사
+                if ct.is_overseas(c.get("서비스명")):
+                    _first_seg = edited[
+                        (edited["회차"].astype(str) == "1")
+                        & (edited["결제방법"].astype(str).str.strip() == "세금계산서")
+                    ]
+                    _daenap = edited[edited["결제방법"].astype(str).str.strip() == "대납액"]
+                    if not _first_seg.empty and not _daenap.empty:
+                        _seg = _first_seg.iloc[0]
+                        _sync = {}
+                        for _col in ("청구예정일", "발행일"):
+                            _v = _seg[_col]
+                            if pd.notna(_v) and isinstance(_v, pd.Timestamp):
+                                _sync[_col] = _v.date()
+                            else:
+                                _sync[_col] = ""
+                        for _, _d in _daenap.iterrows():
+                            # 이미 같은 값이면 skip (불필요한 시트 write 절약)
+                            same = all(
+                                (pd.isna(_d[_col]) and _sync[_col] == "")
+                                or (
+                                    pd.notna(_d[_col])
+                                    and isinstance(_d[_col], pd.Timestamp)
+                                    and _d[_col].date() == _sync[_col]
+                                )
+                                for _col in ("청구예정일", "발행일")
+                            )
+                            if not same:
+                                ct.update_payment_fields(_d["payment_id"], **_sync)
+                                changes_count += 1
                 if changes_count or contract_changes:
                     msg_parts = []
                     if changes_count:
