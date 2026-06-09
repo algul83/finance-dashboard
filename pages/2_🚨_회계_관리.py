@@ -454,8 +454,38 @@ if not card_df.empty:
         )
         st.caption("💡 미매칭/다중 row는 향후 수동 매칭 UI에서 회차를 직접 지정할 예정 (단계 2).")
 
-    # 자동·수동 매칭된 카드결제 요약
+    # 자동·수동 매칭된 카드결제 — 매칭된 계약/회차 정보까지 join
     matched = card_df[card_df["매칭_상태"].isin(["자동", "수동"])]
+    with st.expander(f"✅ 매칭 완료 카드결제 ({len(matched)}건)", expanded=False):
+        if matched.empty:
+            st.info("매칭 완료된 카드결제 없음.")
+        else:
+            _pinfo = payments_df[["payment_id", "contract_id", "회차"]].copy()
+            _cinfo = contracts_df[["contract_id", "고객기관", "건명"]].copy()
+            joined = (
+                matched.merge(
+                    _pinfo, left_on="매칭_payment_id", right_on="payment_id", how="left"
+                )
+                .merge(_cinfo, on="contract_id", how="left")
+            )
+            view = joined[[
+                "결제일", "정산일", "구매자", "거래금액", "정산금액", "카드사",
+                "고객기관", "건명", "회차", "매칭_상태", "상품명",
+            ]].sort_values("결제일", ascending=False).reset_index(drop=True)
+            st.dataframe(
+                view,
+                column_config={
+                    "결제일": st.column_config.DateColumn("결제일", format="YYYY-MM-DD"),
+                    "정산일": st.column_config.DateColumn("정산일", format="YYYY-MM-DD"),
+                    "거래금액": st.column_config.NumberColumn("거래금액", format="localized"),
+                    "정산금액": st.column_config.NumberColumn("정산금액", format="localized"),
+                    "회차": st.column_config.TextColumn("회차", width="small"),
+                    "매칭_상태": st.column_config.TextColumn("매칭", width="small"),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
+
     st.caption(
         f"누적 카드결제: **{len(card_df)}건** · 매칭 완료 {len(matched)} · "
         f"매칭 거래액 합계 {matched['거래금액'].sum():,.0f}원"
