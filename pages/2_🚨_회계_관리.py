@@ -468,8 +468,10 @@ if not card_df.empty:
                 st.caption(
                     f"상품: {card['상품명']} · 거래번호: `{card['거래번호']}`"
                 )
-                # 후보 정렬: 금액 일치 > 고객명 유사도 > 청구예정일 최신
-                cand = _cand_base.copy()
+                # 결제방법이 미지정(빈 셀)인 회차만 후보 → 이미 다른 방식으로 처리된 row 제외
+                cand = _cand_base[
+                    _cand_base["결제방법"].astype(str).str.strip() == ""
+                ].copy()
                 cand["_amt_match"] = cand["금액_n"] == amount
                 cand["_name_sim"] = cand["고객기관"].apply(
                     lambda x: cp._name_similarity(str(x or ""), str(buyer or ""))
@@ -485,14 +487,19 @@ if not card_df.empty:
                     marker = "🎯 " if r["_amt_match"] else "   "
                     label = (
                         f"{marker}{r['고객기관'] or '?'} / {r['건명'] or '?'} / "
-                        f"회차 {r['회차']} · {r['금액_n']:,}원 · "
-                        f"{r['결제방법'] or '(미지정)'}"
+                        f"회차 {r['회차']} · {r['금액_n']:,}원"
                     )
                     options.append(label)
                     opt_pids.append(r["payment_id"])
 
+                if cand_top.empty:
+                    st.warning(
+                        "결제방법이 미지정(빈 셀)인 후보가 없습니다. "
+                        "계약 관리에서 해당 회차의 결제방법을 비우거나 새 회차를 추가하세요."
+                    )
+
                 sel = st.selectbox(
-                    "매칭할 회차 선택",
+                    "매칭할 회차 선택 (결제방법 미지정만 표시)",
                     options=options,
                     key=f"card_match_sel_{card_id}",
                     help="🎯 표시는 카드 거래금액과 정확히 일치하는 후보입니다",
