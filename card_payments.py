@@ -306,7 +306,9 @@ def sync_all_matched_to_payments() -> int:
 
 
 def set_match(card_id: str, payment_id: str) -> None:
-    """수동 매칭 — card_id의 매칭_payment_id + 매칭_상태='수동' 업데이트."""
+    """수동 매칭 — card_id의 매칭_payment_id + 매칭_상태='수동' 업데이트.
+    payment_id가 비어있으면 매칭 해제(미매칭).
+    매칭이 적용되면 즉시 Payments row에 결제일/정산일/결제방법 반영."""
     ws = get_worksheet("CardPayments")
     records = ws.get_all_records(expected_headers=CARD_COLUMNS)
     for i, r in enumerate(records):
@@ -314,8 +316,12 @@ def set_match(card_id: str, payment_id: str) -> None:
             row_idx = i + 2
             col_pid = CARD_COLUMNS.index("매칭_payment_id") + 1
             col_st = CARD_COLUMNS.index("매칭_상태") + 1
-            ws.update_cell(row_idx, col_pid, payment_id)
+            ws.update_cell(row_idx, col_pid, payment_id or "")
             ws.update_cell(row_idx, col_st, "수동" if payment_id else "미매칭")
             invalidate_cache()
+            # 매칭 적용 시 Payments에도 즉시 반영
+            if payment_id:
+                updated_row = pd.Series({**r, "매칭_payment_id": payment_id, "매칭_상태": "수동"})
+                apply_match_to_payment(updated_row)
             return
     raise ValueError(f"card_id {card_id} 못 찾음")

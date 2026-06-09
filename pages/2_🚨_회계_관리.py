@@ -441,20 +441,76 @@ except Exception as e:
     st.warning(f"CardPayments 시트 로드 실패: {str(e)[:120]}")
 
 if not card_df.empty:
-    pending = card_df[card_df["매칭_상태"].isin(["미매칭", "다중"])]
+    pending = card_df[card_df["매칭_상태"].isin(["미매칭", "다중"])].copy()
     st.markdown(f"### 🔧 미매칭/다중 후보 ({len(pending)}건)")
     if pending.empty:
         st.success("모든 카드결제가 자동 매칭 완료. ✅")
     else:
-        st.dataframe(
-            pending[[
-                "결제일", "구매자", "거래금액", "카드사", "상품명",
-                "매칭_상태", "거래번호",
-            ]],
-            hide_index=True,
-            use_container_width=True,
+        # 후보 만들기 헬퍼 (Payments + Contracts join)
+        _cand_base = payments_df.merge(
+            contracts_df[["contract_id", "고객기관", "건명"]],
+            on="contract_id", how="left",
         )
-        st.caption("💡 미매칭/다중 row는 향후 수동 매칭 UI에서 회차를 직접 지정할 예정 (단계 2).")
+        _cand_base["금액_n"] = pd.to_numeric(_cand_base["금액"], errors="coerce").fillna(0).astype(int)
+
+        for _, card in pending.sort_values("결제일", ascending=False).iterrows():
+            card_id = card["card_id"]
+            paid_date_str = (
+                card["결제일"].strftime("%Y-%m-%d") if pd.notna(card["결제일"]) else "?"
+            )
+            buyer = card["구매자"]
+            amount = int(card["거래금액"])
+            header = (
+                f"{paid_date_str} · **{buyer}** · {amount:,}원 · "
+                f"{card['카드사']} · 상태={card['매칭_상태']}"
+            )
+            with st.expander(header):
+                st.caption(
+                    f"상품: {card['상품명']} · 거래번호: `{card['거래번호']}`"
+                )
+                # 후보 정렬: 금액 일치 > 고객명 유사도 > 청구예정일 최신
+                cand = _cand_base.copy()
+                cand["_amt_match"] = cand["금액_n"] == amount
+                cand["_name_sim"] = cand["고객기관"].apply(
+                    lambda x: cp._name_similarity(str(x or ""), str(buyer or ""))
+                )
+                cand_top = cand.sort_values(
+                    ["_amt_match", "_name_sim", "청구예정일"],
+                    ascending=[False, False, False],
+                ).head(50)
+
+                options = ["(매칭 안 함)"]
+                opt_pids = [""]
+                for _, r in cand_top.iterrows():
+                    marker = "🎯 " if r["_amt_match"] else "   "
+                    label = (
+                        f"{marker}{r['고객기관'] or '?'} / {r['건명'] or '?'} / "
+                        f"회차 {r['회차']} · {r['금액_n']:,}원 · "
+                        f"{r['결제방법'] or '(미지정)'}"
+                    )
+                    options.append(label)
+                    opt_pids.append(r["payment_id"])
+
+                sel = st.selectbox(
+                    "매칭할 회차 선택",
+                    options=options,
+                    key=f"card_match_sel_{card_id}",
+                    help="🎯 표시는 카드 거래금액과 정확히 일치하는 후보입니다",
+                )
+                if st.button(
+                    "✅ 매칭 적용",
+                    key=f"card_match_btn_{card_id}",
+                    type="primary",
+                    disabled=(sel == "(매칭 안 함)"),
+                ):
+                    target_pid = opt_pids[options.index(sel)]
+                    try:
+                        cp.set_match(card_id, target_pid)
+                        ct.invalidate_cache()
+                        st.success("✅ 매칭 적용 + Payments에 반영됨")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"매칭 실패: {type(e).__name__}: {e}")
 
     # 자동·수동 매칭된 카드결제 — 매칭된 계약/회차 정보까지 join
     matched = card_df[card_df["매칭_상태"].isin(["자동", "수동"])]
