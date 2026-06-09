@@ -441,12 +441,63 @@ except Exception as e:
     st.warning(f"CardPayments 시트 로드 실패: {str(e)[:120]}")
 
 if not card_df.empty:
-    pending = card_df[card_df["매칭_상태"].isin(["미매칭", "다중"])].copy()
+    pending = card_df[card_df["매칭_상태"].isin(["미매칭", "다중"])].copy().reset_index(drop=True)
     st.markdown(f"### 🔧 미매칭/다중 후보 ({len(pending)}건)")
     if pending.empty:
         st.success("모든 카드결제가 자동 매칭 완료. ✅")
     else:
-        # 후보 만들기 헬퍼 (Payments + Contracts join)
+        # ----- 1) 체크박스 선택 + 일괄 신규 계약 생성 -----
+        st.markdown("##### 🆕 신규 계약 일괄 생성 (노션 미관리 건)")
+        pending_view = pending[[
+            "결제일", "구매자", "거래금액", "카드사", "상품명", "매칭_상태",
+        ]].copy()
+        pending_view.insert(0, "선택", False)
+        edited_pending = st.data_editor(
+            pending_view,
+            column_config={
+                "선택": st.column_config.CheckboxColumn("선택", width="small"),
+                "결제일": st.column_config.DateColumn("결제일", format="YYYY-MM-DD"),
+                "구매자": st.column_config.TextColumn("구매자"),
+                "거래금액": st.column_config.NumberColumn("거래금액", format="localized"),
+                "카드사": st.column_config.TextColumn("카드사", width="small"),
+                "상품명": st.column_config.TextColumn("상품명"),
+                "매칭_상태": st.column_config.TextColumn("상태", width="small"),
+            },
+            disabled=["결제일", "구매자", "거래금액", "카드사", "상품명", "매칭_상태"],
+            hide_index=True,
+            use_container_width=True,
+            key="card_pending_select",
+        )
+        _sel_idx = edited_pending[edited_pending["선택"]].index.tolist()
+        if st.button(
+            f"🆕 선택한 {len(_sel_idx)}건을 신규 계약으로 생성",
+            type="primary",
+            disabled=len(_sel_idx) == 0,
+            key="card_bulk_create",
+        ):
+            ok = 0
+            errs = []
+            for idx in _sel_idx:
+                card = pending.iloc[idx]
+                try:
+                    new_pid = ct.create_contract_from_card(card)
+                    cp.set_match(card["card_id"], new_pid)
+                    ok += 1
+                except Exception as e:
+                    errs.append(f"{card['구매자']}: {type(e).__name__}: {e}")
+            ct.invalidate_cache()
+            cp.invalidate_cache()
+            st.success(f"✅ {ok}건 신규 계약 + 회차 생성 + 매칭 완료")
+            for err in errs:
+                st.error(err)
+            st.rerun()
+        st.caption(
+            "💡 선택한 카드결제 각각에 대해 새 Contracts + 1회차 Payments row를 만들고 "
+            "결제정보(결제일·정산일·금액·결제방법=카드결제·입금완료=TRUE)까지 자동 입력합니다."
+        )
+
+        # ----- 2) 1건씩 수동 매칭 expander -----
+        st.markdown("##### ✋ 또는 1건씩 기존 회차와 수동 매칭")
         _cand_base = payments_df.merge(
             contracts_df[["contract_id", "고객기관", "건명"]],
             on="contract_id", how="left",

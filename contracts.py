@@ -646,6 +646,68 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
     return len(new_rows)
 
 
+def create_contract_from_card(card_row) -> str:
+    """카드결제 row 기반으로 노션 미관리 신규 계약 + 결제 1회차 자동 생성.
+    Returns: 생성된 payment_id (매칭 대상)."""
+    cid = f"C{int(time.time() * 1000)}"
+    pid = f"P{int(time.time() * 1000)}"
+    now = pd.Timestamp.now()
+    paid = pd.to_datetime(card_row.get("결제일"), errors="coerce")
+    settle = pd.to_datetime(card_row.get("정산일"), errors="coerce")
+    amount = int(pd.to_numeric(card_row.get("거래금액"), errors="coerce") or 0)
+    buyer = str(card_row.get("구매자") or "").strip() or "(미지정)"
+    product = str(card_row.get("상품명") or "").strip()
+
+    contract_row = {
+        "contract_id": cid,
+        "notion_id": "",
+        "고객기관": buyer,
+        "건명": buyer,
+        "서비스명": product,
+        "신규갱신": "신규",
+        "노션상태": "성공",
+        "계약일": paid.strftime("%Y-%m-%d") if pd.notna(paid) else "",
+        "총금액": amount,
+        "단가": "",
+        "결제방법": "카드결제",
+        "정산유형": "1회정산",
+        "분납회차": 1,
+        "구독시작일": paid.strftime("%Y-%m-%d") if pd.notna(paid) else "",
+        "구독종료일": "",
+        "메모": "카드결제 자동 생성 (노션 미관리)",
+        "created_at": now.strftime("%Y-%m-%d %H:%M"),
+        "updated_at": now.strftime("%Y-%m-%d %H:%M"),
+    }
+    payment_row = {
+        "payment_id": pid,
+        "contract_id": cid,
+        "회차": "1",
+        "청구예정일": paid.strftime("%Y-%m-%d") if pd.notna(paid) else "",
+        "발행일": paid.strftime("%Y-%m-%d") if pd.notna(paid) else "",
+        "결제방법": "카드결제",
+        "입금완료": "TRUE" if pd.notna(settle) else "FALSE",
+        "입금일": settle.strftime("%Y-%m-%d") if pd.notna(settle) else "",
+        "금액": amount,
+        "단가": "",
+        "고객입금액": "",
+        "메모": "카드결제 자동 생성",
+        "created_at": now.strftime("%Y-%m-%d %H:%M"),
+    }
+
+    ws_c = get_worksheet("Contracts")
+    ws_p = get_worksheet("Payments")
+    ws_c.append_row(
+        [contract_row.get(c, "") for c in CONTRACT_COLUMNS],
+        value_input_option="USER_ENTERED",
+    )
+    ws_p.append_row(
+        [payment_row.get(c, "") for c in PAYMENT_COLUMNS],
+        value_input_option="USER_ENTERED",
+    )
+    invalidate_cache()
+    return pid
+
+
 def update_contract_meta(contract_id: str, **fields) -> None:
     """계약 메타데이터(분납회차·구독기간·메모 등) 수정."""
     ws = get_worksheet("Contracts")
