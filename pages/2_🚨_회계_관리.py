@@ -496,79 +496,80 @@ if not card_df.empty:
             "결제정보(결제일·정산일·금액·결제방법=카드결제·입금완료=TRUE)까지 자동 입력합니다."
         )
 
-        # ----- 2) 1건씩 수동 매칭 expander -----
-        st.markdown("##### ✋ 또는 1건씩 기존 회차와 수동 매칭")
-        _cand_base = payments_df.merge(
-            contracts_df[["contract_id", "고객기관", "건명"]],
-            on="contract_id", how="left",
-        )
-        _cand_base["금액_n"] = pd.to_numeric(_cand_base["금액"], errors="coerce").fillna(0).astype(int)
-
-        for _, card in pending.sort_values("결제일", ascending=False).iterrows():
-            card_id = card["card_id"]
-            paid_date_str = (
-                card["결제일"].strftime("%Y-%m-%d") if pd.notna(card["결제일"]) else "?"
+        # ----- 2) 1건 선택 시 계약명 검색해서 기존 회차에 매칭 -----
+        if len(_sel_idx) == 1:
+            _selected_card = pending.iloc[_sel_idx[0]]
+            st.markdown("##### 🔎 또는 선택한 1건을 기존 계약 회차에 매칭")
+            st.caption(
+                f"선택: **{_selected_card['구매자']}** · "
+                f"{int(_selected_card['거래금액']):,}원 · "
+                f"{(_selected_card['결제일'].strftime('%Y-%m-%d') if pd.notna(_selected_card['결제일']) else '?')}"
             )
-            buyer = card["구매자"]
-            amount = int(card["거래금액"])
-            header = (
-                f"{paid_date_str} · **{buyer}** · {amount:,}원 · "
-                f"{card['카드사']} · 상태={card['매칭_상태']}"
+            search_q = st.text_input(
+                "계약명/고객기관 검색",
+                placeholder="예: 양산부산대 / 김홍아 / 충남대",
+                key="card_match_search",
+                help="결제방법이 미지정(빈 셀)인 회차만 매칭 가능",
             )
-            with st.expander(header):
-                st.caption(
-                    f"상품: {card['상품명']} · 거래번호: `{card['거래번호']}`"
+            if search_q:
+                _cand_base = payments_df.merge(
+                    contracts_df[["contract_id", "고객기관", "건명"]],
+                    on="contract_id", how="left",
                 )
-                # 결제방법이 미지정(빈 셀)인 회차만 후보 → 이미 다른 방식으로 처리된 row 제외
-                cand = _cand_base[
-                    _cand_base["결제방법"].astype(str).str.strip() == ""
+                _cand_base["금액_n"] = pd.to_numeric(
+                    _cand_base["금액"], errors="coerce"
+                ).fillna(0).astype(int)
+                q_low = search_q.strip().lower()
+                matches = _cand_base[
+                    (_cand_base["결제방법"].astype(str).str.strip() == "")
+                    & (
+                        _cand_base["고객기관"].astype(str).str.lower().str.contains(q_low, na=False)
+                        | _cand_base["건명"].astype(str).str.lower().str.contains(q_low, na=False)
+                    )
                 ].copy()
-                cand["_amt_match"] = cand["금액_n"] == amount
-                cand["_name_sim"] = cand["고객기관"].apply(
-                    lambda x: cp._name_similarity(str(x or ""), str(buyer or ""))
-                )
-                cand_top = cand.sort_values(
-                    ["_amt_match", "_name_sim", "청구예정일"],
-                    ascending=[False, False, False],
+                amount = int(_selected_card["거래금액"])
+                matches["_amt_match"] = matches["금액_n"] == amount
+                matches = matches.sort_values(
+                    ["_amt_match", "청구예정일"], ascending=[False, False]
                 ).head(50)
 
-                options = ["(매칭 안 함)"]
-                opt_pids = [""]
-                for _, r in cand_top.iterrows():
-                    marker = "🎯 " if r["_amt_match"] else "   "
-                    label = (
-                        f"{marker}{r['고객기관'] or '?'} / {r['건명'] or '?'} / "
-                        f"회차 {r['회차']} · {r['금액_n']:,}원"
-                    )
-                    options.append(label)
-                    opt_pids.append(r["payment_id"])
-
-                if cand_top.empty:
+                if matches.empty:
                     st.warning(
-                        "결제방법이 미지정(빈 셀)인 후보가 없습니다. "
-                        "계약 관리에서 해당 회차의 결제방법을 비우거나 새 회차를 추가하세요."
+                        f"'{search_q}' 검색 결과 없음 (결제방법이 미지정인 회차만 매칭 가능). "
+                        "계약 관리에서 결제방법을 비우거나 새 회차를 만들어야 합니다."
                     )
-
-                sel = st.selectbox(
-                    "매칭할 회차 선택 (결제방법 미지정만 표시)",
-                    options=options,
-                    key=f"card_match_sel_{card_id}",
-                    help="🎯 표시는 카드 거래금액과 정확히 일치하는 후보입니다",
-                )
-                if st.button(
-                    "✅ 매칭 적용",
-                    key=f"card_match_btn_{card_id}",
-                    type="primary",
-                    disabled=(sel == "(매칭 안 함)"),
-                ):
-                    target_pid = opt_pids[options.index(sel)]
-                    try:
-                        cp.set_match(card_id, target_pid)
-                        ct.invalidate_cache()
-                        st.success("✅ 매칭 적용 + Payments에 반영됨")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"매칭 실패: {type(e).__name__}: {e}")
+                else:
+                    options = ["(매칭 안 함)"]
+                    opt_pids = [""]
+                    for _, r in matches.iterrows():
+                        marker = "🎯 " if r["_amt_match"] else "   "
+                        label = (
+                            f"{marker}{r['고객기관'] or '?'} / {r['건명'] or '?'} / "
+                            f"회차 {r['회차']} · {r['금액_n']:,}원"
+                        )
+                        options.append(label)
+                        opt_pids.append(r["payment_id"])
+                    sel = st.selectbox(
+                        f"매칭할 회차 ({len(matches)}개 결과)",
+                        options=options,
+                        key="card_search_match_sel",
+                        help="🎯 표시는 카드 거래금액과 정확히 일치하는 후보",
+                    )
+                    if st.button(
+                        "✅ 매칭 적용",
+                        type="primary",
+                        disabled=(sel == "(매칭 안 함)"),
+                        key="card_search_match_btn",
+                    ):
+                        try:
+                            cp.set_match(_selected_card["card_id"], opt_pids[options.index(sel)])
+                            ct.invalidate_cache()
+                            st.success("✅ 매칭 적용 + Payments에 반영됨")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"매칭 실패: {type(e).__name__}: {e}")
+        elif len(_sel_idx) >= 2:
+            st.caption("💡 검색 매칭은 한 번에 1건만 가능 — 1개만 선택하면 검색 입력창이 보입니다.")
 
     # 자동·수동 매칭된 카드결제 — 매칭된 계약/회차 정보까지 join
     matched = card_df[card_df["매칭_상태"].isin(["자동", "수동"])]
