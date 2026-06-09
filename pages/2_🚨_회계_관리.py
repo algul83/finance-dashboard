@@ -509,7 +509,7 @@ if not card_df.empty:
                 "계약명/고객기관 검색",
                 placeholder="예: 양산부산대 / 김홍아 / 충남대",
                 key="card_match_search",
-                help="결제방법이 미지정(빈 셀)인 회차만 매칭 가능",
+                help="결제방법 무관하게 모든 회차에서 검색 (이미 다른 방식으로 표시된 회차도 매칭 가능)",
             )
             if search_q:
                 _cand_base = payments_df.merge(
@@ -521,11 +521,8 @@ if not card_df.empty:
                 ).fillna(0).astype(int)
                 q_low = search_q.strip().lower()
                 matches = _cand_base[
-                    (_cand_base["결제방법"].astype(str).str.strip() == "")
-                    & (
-                        _cand_base["고객기관"].astype(str).str.lower().str.contains(q_low, na=False)
-                        | _cand_base["건명"].astype(str).str.lower().str.contains(q_low, na=False)
-                    )
+                    _cand_base["고객기관"].astype(str).str.lower().str.contains(q_low, na=False)
+                    | _cand_base["건명"].astype(str).str.lower().str.contains(q_low, na=False)
                 ].copy()
                 amount = int(_selected_card["거래금액"])
                 matches["_amt_match"] = matches["금액_n"] == amount
@@ -534,18 +531,16 @@ if not card_df.empty:
                 ).head(50)
 
                 if matches.empty:
-                    st.warning(
-                        f"'{search_q}' 검색 결과 없음 (결제방법이 미지정인 회차만 매칭 가능). "
-                        "계약 관리에서 결제방법을 비우거나 새 회차를 만들어야 합니다."
-                    )
+                    st.warning(f"'{search_q}' 검색 결과 없음.")
                 else:
                     options = ["(매칭 안 함)"]
                     opt_pids = [""]
                     for _, r in matches.iterrows():
                         marker = "🎯 " if r["_amt_match"] else "   "
+                        method_tag = f" [{r['결제방법']}]" if str(r['결제방법'] or '').strip() else " [미지정]"
                         label = (
                             f"{marker}{r['고객기관'] or '?'} / {r['건명'] or '?'} / "
-                            f"회차 {r['회차']} · {r['금액_n']:,}원"
+                            f"회차 {r['회차']} · {r['금액_n']:,}원{method_tag}"
                         )
                         options.append(label)
                         opt_pids.append(r["payment_id"])
