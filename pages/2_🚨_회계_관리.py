@@ -427,8 +427,10 @@ if uploaded is not None:
                 result = cp.auto_match_and_save(parsed, contracts_df, payments_df)
             st.success(
                 f"✅ {result['saved']}건 저장 · 자동매칭 {result['auto']} · "
-                f"다중후보 {result['multi']} · 미매칭 {result['miss']}"
+                f"다중후보 {result['multi']} · 미매칭 {result['miss']} · "
+                f"Payments 반영 {result.get('applied', 0)}"
             )
+            ct.invalidate_cache()
             st.rerun()
 
 # 저장된 카드결제 — 미매칭/다중후보 우선 표시
@@ -486,10 +488,19 @@ if not card_df.empty:
                 use_container_width=True,
             )
 
-    st.caption(
-        f"누적 카드결제: **{len(card_df)}건** · 매칭 완료 {len(matched)} · "
-        f"매칭 거래액 합계 {matched['거래금액'].sum():,.0f}원"
-    )
+    sync_col1, sync_col2 = st.columns([2, 5])
+    with sync_col1:
+        if st.button("🔁 매칭 전체를 Payments에 재반영", key="card_resync"):
+            with st.spinner("Payments 동기화 중..."):
+                n = cp.sync_all_matched_to_payments()
+            st.success(f"✅ {n}건 Payments 반영 완료")
+            ct.invalidate_cache()
+            st.rerun()
+    with sync_col2:
+        st.caption(
+            f"누적 카드결제: **{len(card_df)}건** · 매칭 완료 {len(matched)} · "
+            f"매칭 거래액 합계 {matched['거래금액'].sum():,.0f}원"
+        )
 
 # ============== 안내 ==============
 st.info(

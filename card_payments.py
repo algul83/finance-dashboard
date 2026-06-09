@@ -12,6 +12,7 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
+import contracts as ct
 from gsheet_client import get_worksheet
 
 CARD_COLUMNS = [
@@ -218,6 +219,7 @@ def auto_match_and_save(
     rows_to_append = []
     counts = {"saved": 0, "auto": 0, "multi": 0, "miss": 0}
 
+    auto_applied = 0
     for i, (_, c) in enumerate(new_cards.iterrows()):
         if str(c.get("거래번호", "")) in existed_keys:
             continue
@@ -250,10 +252,57 @@ def auto_match_and_save(
         rows_to_append.append([row.get(col, "") for col in CARD_COLUMNS])
         counts["saved"] += 1
 
+        # 자동 매칭된 row는 즉시 Payments에 반영
+        if status == "자동" and pid:
+            inject = pd.Series(row)
+            if apply_match_to_payment(inject):
+                auto_applied += 1
+
     if rows_to_append:
         ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
         invalidate_cache()
+    counts["applied"] = auto_applied
     return counts
+
+
+def apply_match_to_payment(card_row) -> bool:
+    """매칭된 카드결제의 결제일/정산일을 해당 Payments 회차에 반영.
+
+    - 승인일(결제일) → 청구예정일, 세금계산서 발행일
+    - 정산일 → 입금일 (update_payment_fields가 입금완료=TRUE 자동 토글)
+    - 결제방법 = "카드결제"
+    """
+    pid = str(card_row.get("매칭_payment_id", "") or "").strip()
+    if not pid:
+        return False
+    fields = {"결제방법": "카드결제"}
+    paid = pd.to_datetime(card_row.get("결제일"), errors="coerce")
+    settle = pd.to_datetime(card_row.get("정산일"), errors="coerce")
+    if pd.notna(paid):
+        d = paid.date()
+        fields["청구예정일"] = d
+        fields["발행일"] = d
+    if pd.notna(settle):
+        fields["입금일"] = settle.date()
+    try:
+        ct.update_payment_fields(pid, **fields)
+        return True
+    except ValueError:
+        return False
+
+
+def sync_all_matched_to_payments() -> int:
+    """CardPayments 시트의 자동/수동 매칭 row를 모두 Payments에 일괄 반영.
+    Returns: 반영된 회차 수."""
+    cards = load_card_payments()
+    if cards.empty:
+        return 0
+    matched = cards[cards["매칭_상태"].isin(["자동", "수동"])]
+    applied = 0
+    for _, c in matched.iterrows():
+        if apply_match_to_payment(c):
+            applied += 1
+    return applied
 
 
 def set_match(card_id: str, payment_id: str) -> None:
