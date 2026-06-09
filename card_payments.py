@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import time
 from difflib import SequenceMatcher
+from io import BytesIO, StringIO
 from typing import Optional
 
 import pandas as pd
@@ -56,13 +57,39 @@ def invalidate_cache():
 
 
 def parse_innopay(file) -> pd.DataFrame:
-    """이노페이 정산내역 (.xls = HTML) → 정규화된 DataFrame.
+    """이노페이 정산내역 → 정규화된 DataFrame.
 
+    형식 자동 감지:
+      - 진짜 xlsx (PK ZIP header) → pd.read_excel
+      - HTML 위장 .xls → pd.read_html (utf-8 / cp949 / euc-kr 인코딩 순차 시도)
     원본 컬럼: 결제서비스명·정산일·승인일·상호·MID·거래금액·수수료·VAT·
               ...·정산금액·카드·승인번호·주문번호·구매자·상품명·TID·상태
     → CardPayments 스키마로 변환.
     """
-    tables = pd.read_html(file)
+    if hasattr(file, "read"):
+        content = file.read()
+        if hasattr(file, "seek"):
+            file.seek(0)
+    else:
+        with open(file, "rb") as fh:
+            content = fh.read()
+
+    if content[:4] == b"PK\x03\x04":
+        # 진짜 xlsx (ZIP container)
+        tables = [pd.read_excel(BytesIO(content))]
+    else:
+        # HTML 텍스트 — 인코딩 추정
+        text = None
+        for enc in ("utf-8", "cp949", "euc-kr", "latin-1"):
+            try:
+                text = content.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        if text is None:
+            raise ValueError("파일 인코딩을 인식하지 못했습니다.")
+        tables = pd.read_html(StringIO(text))
+
     if not tables:
         raise ValueError("엑셀에서 테이블을 찾지 못했습니다.")
     raw = tables[0]
