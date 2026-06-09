@@ -495,40 +495,37 @@ if search_query and customer_contracts.empty:
     st.warning(f"'{search_query}'과(와) 일치하는 계약이 없습니다.")
 
 # ============== 진행중 / 종료 분리 ==============
-# 일회성 계약은 구독종료일이 없으므로 구독시작일 기준으로 종료 판단,
-# 신규/갱신 등 구독형 계약은 구독종료일 기준.
+# 종료 조건: 계약의 모든 결제 회차에 대해 6개 필수 필드가 모두 입력됨.
+#   - 발행일, 결제방법, 금액(매출액), 단가, 고객입금액, 입금일
+# 회차 하나라도 빈 셀/0이면 진행중으로 간주.
 _today = pd.Timestamp.today().normalize()
-# 일회성 판정: 신규갱신=="일회성" 또는 정산유형에 "1회" 포함 (예: "1회정산").
-# 노션에서 신규갱신은 비어있어도 정산유형으로 일회성을 표현하는 케이스가 있어 둘 다 본다.
-_is_onetime = (
-    (customer_contracts["신규갱신"].astype(str).str.strip() == "일회성")
-    | customer_contracts["정산유형"].fillna("").astype(str).str.contains("1회", na=False)
-)
-_ended_subscription = (
-    ~_is_onetime
-    & customer_contracts["구독종료일"].notna()
-    & (customer_contracts["구독종료일"] < _today)
-)
-_ended_onetime = (
-    _is_onetime
-    & customer_contracts["구독시작일"].notna()
-    & (customer_contracts["구독시작일"] < _today)
-)
-_date_ended = _ended_subscription | _ended_onetime
 
-# 추가 조건: 입금율 100%여야 종료. 진행 중 카드와 동일하게 effective_paid_amount 사용.
-def _fully_paid(cid: str, total: float) -> bool:
-    if total <= 0:
-        return False
+_DATE_FIELDS = ("발행일", "입금일")
+_AMOUNT_FIELDS = ("금액", "단가", "고객입금액")
+
+
+def _all_fields_filled(cid: str) -> bool:
     pays = payments_df[payments_df["contract_id"] == cid] if not payments_df.empty else pd.DataFrame()
-    paid = ct.effective_paid_amount(pays)
-    return paid / total >= 1.0
+    if pays.empty:
+        return False
+    for _, r in pays.iterrows():
+        # 날짜 필드: NaT/빈셀이면 미입력
+        for f in _DATE_FIELDS:
+            v = r.get(f)
+            if pd.isna(v) or (isinstance(v, str) and not v.strip()):
+                return False
+        # 금액 필드: 빈셀 또는 0이면 미입력
+        for f in _AMOUNT_FIELDS:
+            v = pd.to_numeric(r.get(f), errors="coerce")
+            if pd.isna(v) or v == 0:
+                return False
+        # 결제방법: 빈 문자열이면 미입력
+        if not str(r.get("결제방법") or "").strip():
+            return False
+    return True
 
 
-_fully_paid_mask = customer_contracts.apply(
-    lambda r: _fully_paid(r["contract_id"], r["총금액"]), axis=1
-)
-_ended_mask = _date_ended & _fully_paid_mask
+_ended_mask = customer_contracts["contract_id"].apply(_all_fields_filled)
 _active_contracts = customer_contracts[~_ended_mask]
 _ended_contracts = customer_contracts[_ended_mask]
 
