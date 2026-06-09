@@ -278,12 +278,16 @@ def apply_match_to_payment(card_row) -> bool:
     fields = {"결제방법": "카드결제"}
     paid = pd.to_datetime(card_row.get("결제일"), errors="coerce")
     settle = pd.to_datetime(card_row.get("정산일"), errors="coerce")
+    amount = pd.to_numeric(card_row.get("거래금액"), errors="coerce")
     if pd.notna(paid):
         d = paid.date()
         fields["청구예정일"] = d
         fields["발행일"] = d
     if pd.notna(settle):
         fields["입금일"] = settle.date()
+    if pd.notna(amount):
+        fields["금액"] = int(amount)
+        fields["고객입금액"] = int(amount)
     try:
         ct.update_payment_fields(pid, **fields)
         return True

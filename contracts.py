@@ -689,7 +689,7 @@ def create_contract_from_card(card_row) -> str:
         "입금일": settle.strftime("%Y-%m-%d") if pd.notna(settle) else "",
         "금액": amount,
         "단가": "",
-        "고객입금액": "",
+        "고객입금액": amount,
         "메모": "카드결제 자동 생성",
         "created_at": now.strftime("%Y-%m-%d %H:%M"),
     }
