@@ -903,6 +903,37 @@ def _render_contract_card(c):
                         else:
                             st.success("✅ 저장 완료")
                         st.rerun()
+
+                    # ----- 위험 영역: 계약 삭제 -----
+                    st.markdown("---")
+                    st.markdown(
+                        "<div style='color:#B91C1C;font-weight:700;margin-bottom:6px'>⚠️ 위험 영역</div>"
+                        "<div style='font-size:0.82rem;color:#6B6A73;line-height:1.5'>"
+                        "이 계약과 연결된 모든 결제 회차가 시트에서 영구 삭제됩니다. "
+                        "매칭된 카드결제가 있으면 매칭_상태가 '미매칭'으로 되돌아갑니다."
+                        "</div>",
+                        unsafe_allow_html=True,
+                    )
+                    _confirm = st.checkbox(
+                        "삭제 확인 — 이 동작은 되돌릴 수 없음",
+                        key=f"del_confirm_{contract_id}",
+                    )
+                    if st.button(
+                        "🗑️ 계약 + 회차 영구 삭제",
+                        key=f"del_btn_{contract_id}",
+                        disabled=not _confirm,
+                        type="secondary",
+                        use_container_width=True,
+                    ):
+                        try:
+                            res = ct.delete_contract(contract_id)
+                            st.success(
+                                f"✅ 삭제 완료 — 계약 {res['contract']}건 · "
+                                f"회차 {res['payments']}개 · 카드매칭 해제 {res['cards_unmatched']}건"
+                            )
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"삭제 실패: {type(e).__name__}: {e}")
             save_clicked = btn_cols[1].button(
                 "💾 변경사항 저장",
                 key=f"save_edit_{contract_id}",

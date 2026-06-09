@@ -646,6 +646,60 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
     return len(new_rows)
 
 
+def delete_contract(contract_id: str) -> dict:
+    """계약 + 연결된 모든 결제 회차를 시트에서 영구 삭제.
+    매칭된 카드결제가 있으면 매칭_상태를 '미매칭'으로 되돌려서 빠진 row 추적 가능.
+
+    Returns: {"contract": 0/1, "payments": N, "cards_unmatched": M}
+    """
+    result = {"contract": 0, "payments": 0, "cards_unmatched": 0}
+
+    ws_p = get_worksheet("Payments")
+    payment_records = ws_p.get_all_records(expected_headers=PAYMENT_COLUMNS)
+    target_pids = {
+        r["payment_id"] for r in payment_records if r["contract_id"] == contract_id
+    }
+
+    # 1) 카드결제 매칭 해제 (CardPayments 시트가 있을 때만)
+    if target_pids:
+        try:
+            ws_card = get_worksheet("CardPayments")
+            CARD_COLS_LOCAL = [
+                "card_id", "pg", "결제일", "정산일", "거래금액", "수수료", "정산금액",
+                "카드사", "승인번호", "거래번호", "구매자", "상품명", "상태",
+                "매칭_payment_id", "매칭_상태", "업로드일시", "메모",
+            ]
+            col_cpid = CARD_COLS_LOCAL.index("매칭_payment_id") + 1
+            col_cst = CARD_COLS_LOCAL.index("매칭_상태") + 1
+            for i, c_rec in enumerate(ws_card.get_all_records()):
+                if str(c_rec.get("매칭_payment_id", "")).strip() in target_pids:
+                    sheet_row = i + 2
+                    ws_card.update_cell(sheet_row, col_cpid, "")
+                    ws_card.update_cell(sheet_row, col_cst, "미매칭")
+                    result["cards_unmatched"] += 1
+        except Exception:
+            pass  # CardPayments 탭 없을 수도 있음
+
+    # 2) Payments row 삭제 (역순으로 — 위에서부터 지우면 index가 shift됨)
+    payment_rows = [
+        i + 2 for i, r in enumerate(payment_records) if r["contract_id"] == contract_id
+    ]
+    for row_idx in sorted(payment_rows, reverse=True):
+        ws_p.delete_rows(row_idx)
+        result["payments"] += 1
+
+    # 3) Contracts row 삭제
+    ws_c = get_worksheet("Contracts")
+    for i, r in enumerate(ws_c.get_all_records(expected_headers=CONTRACT_COLUMNS)):
+        if r["contract_id"] == contract_id:
+            ws_c.delete_rows(i + 2)
+            result["contract"] = 1
+            break
+
+    invalidate_cache()
+    return result
+
+
 def create_contract_from_card(card_row) -> str:
     """카드결제 row 기반으로 노션 미관리 신규 계약 + 결제 1회차 자동 생성.
     Returns: 생성된 payment_id (매칭 대상)."""
