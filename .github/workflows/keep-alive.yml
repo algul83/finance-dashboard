@@ -1,0 +1,27 @@
+name: Keep Streamlit App Awake
+
+on:
+  schedule:
+    # 6시간마다 실행 (KST 09:00, 15:00, 21:00, 03:00)
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Streamlit app
+        run: |
+          URL="https://onesglobal-accounting.streamlit.app"
+          echo "Pinging $URL"
+          # 인증벽 있는 앱은 303 → auth 페이지 무한 리다이렉트라 -L 미사용.
+          # Streamlit 엣지에 요청이 닿으면 sleep 타이머 리셋되므로 303도 성공 처리.
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL")
+          echo "HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -ge 100 ] && [ "$HTTP_CODE" -lt 400 ]; then
+            echo "✅ Ping reached Streamlit edge — sleep timer reset"
+          else
+            echo "❌ Unexpected response: $HTTP_CODE"
+            exit 1
+          fi
