@@ -687,6 +687,10 @@ def _render_contract_card(c, card_idx: int = 0):
             # 고객입금액 0/빈셀은 빈칸으로 표시 — 자동 fallback 제거.
             # 실제 입금 확인 후 사용자가 수기 입력하는 정책.
             view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
+            # 대납액 row는 매출액(금액) 미사용 — 빈칸으로 가림. 단가·고객입금액만 의미 있음.
+            # 매출 집계에서도 제외 (home.py 415 라인 + 아래 _is_revenue).
+            _daenap_mask = view["결제방법"].astype(str).str.strip() == "대납액"
+            view.loc[_daenap_mask, "금액"] = pd.NA
 
             # data_editor의 미저장 편집 내역을 view에 미리 적용 → 합계 실시간 반영
             _editor_key = f"editor_{card_uid}"
@@ -818,7 +822,7 @@ def _render_contract_card(c, card_idx: int = 0):
                         "매출액 (부가세포함)",
                         format="localized",
                         width=150,
-                        help="세금계산서 발행 금액",
+                        help="세금계산서 발행 금액. 결제방법이 '대납액'인 회차는 매출이 아니므로 입력 무시 + 자동 정리됩니다 (단가·고객입금액만 사용).",
                     ),
                     "단가": st.column_config.NumberColumn(
                         "단가",
@@ -975,8 +979,12 @@ def _render_contract_card(c, card_idx: int = 0):
                     orig = view.loc[idx]
                     new = edited.loc[idx]
                     pid = orig["payment_id"]
+                    is_daenap = str(new.get("결제방법") or "").strip() == "대납액"
                     diffs = {}
                     for col in ("청구예정일", "발행일", "결제방법", "입금일", "금액", "단가", "고객입금액"):
+                        # 대납액 row의 매출액은 사용자 입력 무시 — 아래에서 시트 잔존값 정리만 처리
+                        if is_daenap and col == "금액":
+                            continue
                         a, b = orig[col], new[col]
                         if pd.isna(a) and pd.isna(b):
                             continue
@@ -987,6 +995,17 @@ def _render_contract_card(c, card_idx: int = 0):
                                 diffs[col] = ""
                             else:
                                 diffs[col] = b
+                    # 대납액 row의 매출액은 view에서 가렸지만 시트엔 잔존 가능 → 비우기.
+                    # contract_payments(원본)에서 시트값 확인 후 0/None이 아니면 빈값으로 정리.
+                    if is_daenap:
+                        sheet_row = contract_payments[contract_payments["payment_id"] == pid]
+                        if not sheet_row.empty:
+                            sheet_금액 = sheet_row.iloc[0].get("금액")
+                            try:
+                                if pd.notna(sheet_금액) and float(sheet_금액) != 0:
+                                    diffs["금액"] = ""
+                            except (ValueError, TypeError):
+                                pass
                     if diffs:
                         ct.update_payment_fields(pid, **diffs)
                         changes_count += 1
