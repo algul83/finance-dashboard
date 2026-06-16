@@ -495,13 +495,17 @@ if search_query and customer_contracts.empty:
     st.warning(f"'{search_query}'과(와) 일치하는 계약이 없습니다.")
 
 # ============== 진행중 / 종료 분리 ==============
-# 종료 조건: 계약의 모든 결제 회차에 대해 6개 필수 필드가 모두 입력됨.
-#   - 발행일, 결제방법, 금액(매출액), 단가, 고객입금액, 입금일
-# 회차 하나라도 빈 셀/0이면 진행중으로 간주.
+# 종료 조건: 계약의 모든 결제 회차에 대해 필수 필드가 모두 입력됨.
+#   - 일반 row: 발행일, 입금일, 금액(매출액), 단가, 고객입금액, 결제방법
+#   - 대납액 row: 입금일, 단가, 고객입금액 (+ 결제방법="대납액") — 매출액·발행일 제외
+# 회차 하나라도 미충족이면 진행중으로 간주.
 _today = pd.Timestamp.today().normalize()
 
 _DATE_FIELDS = ("발행일", "입금일")
 _AMOUNT_FIELDS = ("금액", "단가", "고객입금액")
+# 대납액 row 전용 — 매출액·발행일 없이도 종료 판정
+_DAENAP_DATE_FIELDS = ("입금일",)
+_DAENAP_AMOUNT_FIELDS = ("단가", "고객입금액")
 
 
 def _all_fields_filled(cid: str) -> bool:
@@ -509,17 +513,20 @@ def _all_fields_filled(cid: str) -> bool:
     if pays.empty:
         return False
     for _, r in pays.iterrows():
+        is_daenap = str(r.get("결제방법") or "").strip() == "대납액"
+        date_fields = _DAENAP_DATE_FIELDS if is_daenap else _DATE_FIELDS
+        amount_fields = _DAENAP_AMOUNT_FIELDS if is_daenap else _AMOUNT_FIELDS
         # 날짜 필드: NaT/빈셀이면 미입력
-        for f in _DATE_FIELDS:
+        for f in date_fields:
             v = r.get(f)
             if pd.isna(v) or (isinstance(v, str) and not v.strip()):
                 return False
         # 금액 필드: 빈셀 또는 0이면 미입력
-        for f in _AMOUNT_FIELDS:
+        for f in amount_fields:
             v = pd.to_numeric(r.get(f), errors="coerce")
             if pd.isna(v) or v == 0:
                 return False
-        # 결제방법: 빈 문자열이면 미입력
+        # 결제방법: 빈 문자열이면 미입력 (대납액 row는 이미 "대납액"이라 자동 충족)
         if not str(r.get("결제방법") or "").strip():
             return False
     return True
