@@ -599,9 +599,14 @@ if _selected_tab is None:
     _selected_tab = "active"
 
 
-def _render_contract_card(c):
-    """단일 계약 카드 렌더링 — 진행중/종료 탭에서 공통 사용."""
+def _render_contract_card(c, card_idx: int = 0):
+    """단일 계약 카드 렌더링 — 진행중/종료 탭에서 공통 사용.
+
+    card_idx: contract_id 중복 데이터(시트 입력 실수 등)가 있을 때도 widget key
+              충돌 방지 위해 row index를 함께 사용. 호출부에서 enumerate로 전달.
+    """
     contract_id = c["contract_id"]
+    card_uid = "{}__{}".format(contract_id, card_idx)  # widget key용 unique id
     contract_payments = payments_df[payments_df["contract_id"] == contract_id] if not payments_df.empty else pd.DataFrame()
     paid_amount = ct.effective_paid_amount(contract_payments)
     progress = (paid_amount / c["총금액"] * 100) if c["총금액"] > 0 else 0
@@ -615,7 +620,7 @@ def _render_contract_card(c):
         badge = f"🔴 {progress:.0f}%"
 
     # 카드 박스 — 4등분(계약명·고객·금액·입금률) + 펼침 버튼
-    expand_key = f"expand_{contract_id}"
+    expand_key = f"expand_{card_uid}"
     if expand_key not in st.session_state:
         st.session_state[expand_key] = False
     is_expanded = st.session_state[expand_key]
@@ -628,7 +633,7 @@ def _render_contract_card(c):
         col_rate.markdown(badge)
         if col_btn.button(
             "▲" if is_expanded else "▼",
-            key=f"toggle_{contract_id}",
+            key=f"toggle_{card_uid}",
             use_container_width=True,
             help="펼치기/접기",
         ):
@@ -684,7 +689,7 @@ def _render_contract_card(c):
             view.loc[view["고객입금액"] == 0, "고객입금액"] = pd.NA
 
             # data_editor의 미저장 편집 내역을 view에 미리 적용 → 합계 실시간 반영
-            _editor_key = f"editor_{contract_id}"
+            _editor_key = f"editor_{card_uid}"
             _view_live = view.copy()
             _editor_state = st.session_state.get(_editor_key, {})
             for _row_idx, _changes in _editor_state.get("edited_rows", {}).items():
@@ -701,7 +706,7 @@ def _render_contract_card(c):
             _sum_고객 = int(pd.to_numeric(_view_live["고객입금액"], errors="coerce").fillna(0).sum())
 
             def _bulk_apply_method():
-                val = st.session_state.get(f"bulk_pm_{contract_id}", "(미선택)")
+                val = st.session_state.get(f"bulk_pm_{card_uid}", "(미선택)")
                 new_val = "" if val == "(미선택)" else val
                 # 계약 단위 기본값 저장
                 ct.update_contract_meta(contract_id, 결제방법=new_val)
@@ -768,7 +773,7 @@ def _render_contract_card(c):
                     "결제방법 일괄",
                     options=_options_pm,
                     index=_idx_pm,
-                    key=f"bulk_pm_{contract_id}",
+                    key=f"bulk_pm_{card_uid}",
                     on_change=_bulk_apply_method,
                     label_visibility="collapsed",
                     help="선택 시 모든 회차에 일괄 적용",
@@ -837,7 +842,7 @@ def _render_contract_card(c):
                 hide_index=True,
                 use_container_width=True,
                 num_rows="fixed",
-                key=f"editor_{contract_id}",
+                key=f"editor_{card_uid}",
             )
 
             # 편집 결과 실시간 상태 미리보기
@@ -856,7 +861,7 @@ def _render_contract_card(c):
                         "분납 회차 (분할정산: 2 또는 3, 월납: 12 등) — 입력 시 부족한 회차가 자동 생성됩니다",
                         min_value=0, max_value=24,
                         value=int(c["분납회차"]) if pd.notna(c["분납회차"]) else 0,
-                        key=f"분납_{contract_id}",
+                        key=f"분납_{card_uid}",
                     )
                     st.caption("💡 단가는 결제 회차 표에서 회차별로 입력하세요 (해외대조약은 세금계산서/대납액 독립)")
                     _curr_pay_method = str(c.get("결제방법") or "").strip()
@@ -869,20 +874,20 @@ def _render_contract_card(c):
                         "결제 방법",
                         options=_pay_options,
                         index=_pay_idx,
-                        key=f"결제방법_{contract_id}",
+                        key=f"결제방법_{card_uid}",
                     )
                     new_구독시작 = st.date_input(
                         "구독 시작일",
                         value=c["구독시작일"].date() if pd.notna(c["구독시작일"]) else None,
-                        key=f"시작_{contract_id}",
+                        key=f"시작_{card_uid}",
                     )
                     new_구독종료 = st.date_input(
                         "구독 종료일",
                         value=c["구독종료일"].date() if pd.notna(c["구독종료일"]) else None,
-                        key=f"종료_{contract_id}",
+                        key=f"종료_{card_uid}",
                     )
-                    new_메모 = st.text_area("메모", value=c.get("메모", "") or "", key=f"memo_{contract_id}")
-                    if st.button("저장", key=f"save_{contract_id}"):
+                    new_메모 = st.text_area("메모", value=c.get("메모", "") or "", key=f"memo_{card_uid}")
+                    if st.button("저장", key=f"save_{card_uid}"):
                         ct.update_contract_meta(
                             contract_id,
                             분납회차=new_분납 if new_분납 > 0 else "",
@@ -913,11 +918,11 @@ def _render_contract_card(c):
                     )
                     _confirm = st.checkbox(
                         "삭제 확인 — 이 동작은 되돌릴 수 없음",
-                        key=f"del_confirm_{contract_id}",
+                        key=f"del_confirm_{card_uid}",
                     )
                     if st.button(
                         "🗑️ 계약 + 회차 영구 삭제",
-                        key=f"del_btn_{contract_id}",
+                        key=f"del_btn_{card_uid}",
                         disabled=not _confirm,
                         type="secondary",
                         use_container_width=True,
@@ -933,7 +938,7 @@ def _render_contract_card(c):
                             st.error(f"삭제 실패: {type(e).__name__}: {e}")
             save_clicked = btn_cols[1].button(
                 "💾 변경사항 저장",
-                key=f"save_edit_{contract_id}",
+                key=f"save_edit_{card_uid}",
                 type="primary",
                 use_container_width=True,
             )
@@ -1024,7 +1029,7 @@ def _render_contract_card(c):
                         msg_parts.append(f"계약 메타({', '.join(contract_changes)})")
                     st.success(f"✅ {' + '.join(msg_parts)} 변경 저장 완료")
                     # 저장 후 카드 접기
-                    st.session_state[f"expand_{contract_id}"] = False
+                    st.session_state[f"expand_{card_uid}"] = False
                     st.rerun()
                 else:
                     st.info("변경된 내용이 없습니다.")
@@ -1037,14 +1042,21 @@ if _selected_tab == "ended":
     if _ended_contracts.empty:
         st.info("종료된 계약이 없습니다.")
     else:
-        for _, c in _ended_contracts.iterrows():
-            _render_contract_card(c)
+        # contract_id가 시트 입력 실수 등으로 중복 가능 — enumerate idx로 widget key 충돌 회피
+        _dup_ids = _ended_contracts["contract_id"][_ended_contracts["contract_id"].duplicated()].unique().tolist()
+        if _dup_ids:
+            st.warning(f"⚠️ 중복된 contract_id 발견 ({len(_dup_ids)}건): {', '.join(map(str, _dup_ids[:5]))}{'...' if len(_dup_ids) > 5 else ''}. Google Sheets에서 정리해주세요.")
+        for idx, (_, c) in enumerate(_ended_contracts.iterrows()):
+            _render_contract_card(c, card_idx=idx)
 else:
     if _active_contracts.empty:
         st.info("진행 중인 계약이 없습니다.")
     else:
-        for _, c in _active_contracts.iterrows():
-            _render_contract_card(c)
+        _dup_ids = _active_contracts["contract_id"][_active_contracts["contract_id"].duplicated()].unique().tolist()
+        if _dup_ids:
+            st.warning(f"⚠️ 중복된 contract_id 발견 ({len(_dup_ids)}건): {', '.join(map(str, _dup_ids[:5]))}{'...' if len(_dup_ids) > 5 else ''}. Google Sheets에서 정리해주세요.")
+        for idx, (_, c) in enumerate(_active_contracts.iterrows()):
+            _render_contract_card(c, card_idx=idx)
 
 # ============== 푸터 ==============
 st.markdown("---")
