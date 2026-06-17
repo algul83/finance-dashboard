@@ -87,6 +87,12 @@ def load_contracts() -> pd.DataFrame:
     # 반환해서 UI에 "—, 0원, 0%" 유령 카드가 표시되는 문제 방지.
     # contract_id가 비어있거나 공백이면 유효하지 않은 row로 간주.
     df = df[df["contract_id"].fillna("").astype(str).str.strip() != ""]
+    # 노션 sync로 들어왔지만 본문이 모두 빈 row(과거 데이터)도 표시에서 제외 —
+    # contract_id는 자동 생성되어 있으나 건명·고객기관·총금액이 모두 비어있으면 유령 카드.
+    _name_empty = df["건명"].fillna("").astype(str).str.strip() == ""
+    _cust_empty = df["고객기관"].fillna("").astype(str).str.strip() == ""
+    _total_empty = pd.to_numeric(df.get("총금액", 0), errors="coerce").fillna(0) == 0
+    df = df[~(_name_empty & _cust_empty & _total_empty)]
     df = df.reset_index(drop=True)
     df["총금액"] = pd.to_numeric(df.get("총금액", 0), errors="coerce").fillna(0)
     df["단가"] = pd.to_numeric(df.get("단가", 0), errors="coerce").fillna(0)
@@ -185,6 +191,13 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
     for _, n in target.iterrows():
         nid = str(n["id"])
         if nid in existing_notion_ids:
+            continue
+        # 빈 노션 페이지 skip — Name·고객기관·총매출이 모두 비어있으면 의미 없는 row.
+        # 이걸 sync하면 시트에 contract_id만 있는 유령 카드가 생성됨.
+        _name = str(n.get("name") or "").strip()
+        _customer = str(n.get("고객기관") or "").strip()
+        _total = float(n.get("총매출") or 0)
+        if not _name and not _customer and _total == 0:
             continue
         cid = f"C{int(time.time() * 1000)}{len(new_contracts):03d}"
         분납_int = _parse_분납회차(n.get("분납회차"))
