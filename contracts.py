@@ -83,6 +83,11 @@ def load_contracts() -> pd.DataFrame:
     if not data:
         return pd.DataFrame(columns=CONTRACT_COLUMNS)
     df = pd.DataFrame(data)
+    # 빈 row 제거 — Sheets에 빈 행이 끼면 get_all_records가 모든 필드가 비어있는 row를
+    # 반환해서 UI에 "—, 0원, 0%" 유령 카드가 표시되는 문제 방지.
+    # contract_id가 비어있거나 공백이면 유효하지 않은 row로 간주.
+    df = df[df["contract_id"].fillna("").astype(str).str.strip() != ""]
+    df = df.reset_index(drop=True)
     df["총금액"] = pd.to_numeric(df.get("총금액", 0), errors="coerce").fillna(0)
     df["단가"] = pd.to_numeric(df.get("단가", 0), errors="coerce").fillna(0)
     df["결제방법"] = df.get("결제방법", "").astype(str).fillna("")
@@ -101,6 +106,12 @@ def load_payments() -> pd.DataFrame:
     if not data:
         return pd.DataFrame(columns=PAYMENT_COLUMNS)
     df = pd.DataFrame(data)
+    # 빈 row 제거 — payment_id 또는 contract_id가 비어있으면 유효하지 않은 row.
+    df = df[
+        (df["payment_id"].fillna("").astype(str).str.strip() != "")
+        & (df["contract_id"].fillna("").astype(str).str.strip() != "")
+    ]
+    df = df.reset_index(drop=True)
     df["금액"] = pd.to_numeric(df.get("금액", 0), errors="coerce").fillna(0)
     df["단가"] = pd.to_numeric(df.get("단가", 0), errors="coerce").fillna(0)
     df["고객입금액"] = pd.to_numeric(df.get("고객입금액", 0), errors="coerce").fillna(0)
