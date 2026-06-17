@@ -309,6 +309,54 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
     return len(new_contracts), new_payments_total
 
 
+def find_orphan_contracts(notion_df: pd.DataFrame) -> pd.DataFrame:
+    """시트 contracts 중 노션 confirmed에 없는 row 식별.
+
+    포함 대상:
+    - notion_id가 있는데 노션엔 그 page가 없는 경우 (삭제됨)
+    - notion_id가 있는데 노션 page 상태가 confirmed(성공/입금완료/정산완료)가 아닌 경우
+
+    notion_id가 빈 row(수동 입력 가능성)는 건드리지 않음.
+    """
+    contracts = load_contracts()
+    if contracts.empty:
+        return pd.DataFrame()
+    confirmed_notion_ids = set(
+        notion_df[notion_df["상태"].isin(CONFIRMED_STATES)]["id"].astype(str)
+    )
+    has_nid = contracts["notion_id"].fillna("").astype(str).str.strip() != ""
+    in_confirmed = contracts["notion_id"].astype(str).isin(confirmed_notion_ids)
+    return contracts[has_nid & ~in_confirmed].copy()
+
+
+def delete_contracts_by_ids(contract_ids: list[str]) -> tuple[int, int]:
+    """contracts + 관련 payments 시트 row 삭제.
+
+    Returns: (계약 row 삭제 수, 결제 row 삭제 수)
+    """
+    if not contract_ids:
+        return 0, 0
+    target = set(str(x) for x in contract_ids)
+
+    ws_c = get_worksheet("Contracts")
+    contracts_all = ws_c.get_all_records(expected_headers=CONTRACT_COLUMNS)
+    # 시트 행 번호 (header가 row 1이라 records[i] → sheet row i+2)
+    rows_c = [i + 2 for i, r in enumerate(contracts_all) if str(r.get("contract_id", "")) in target]
+
+    ws_p = get_worksheet("Payments")
+    payments_all = ws_p.get_all_records(expected_headers=PAYMENT_COLUMNS)
+    rows_p = [i + 2 for i, r in enumerate(payments_all) if str(r.get("contract_id", "")) in target]
+
+    # 역순으로 삭제 — 위에서부터 지우면 이후 인덱스가 밀려서 잘못 지움
+    for row in sorted(rows_p, reverse=True):
+        ws_p.delete_rows(row)
+    for row in sorted(rows_c, reverse=True):
+        ws_c.delete_rows(row)
+
+    invalidate_cache()
+    return len(rows_c), len(rows_p)
+
+
 def add_payment(contract_id: str, 회차, 청구예정일, 발행일, 금액, 메모: str = "") -> None:
     """결제 회차 수동 추가."""
     pid = f"P{int(time.time() * 1000)}"

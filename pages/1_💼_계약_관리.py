@@ -203,6 +203,52 @@ if st.sidebar.button("♻️ 캐시 새로고침", use_container_width=True):
     ct.invalidate_cache()
     st.rerun()
 
+# 노션에서 삭제·상태변경된 시트 row 정리 — 2단계(미리보기 → 실제 삭제)
+with st.sidebar.expander("🧹 노션 삭제 row 정리"):
+    st.caption(
+        "노션에서 페이지를 삭제했거나 상태를 confirmed 외로 바꾼 시트 row를 정리합니다. "
+        "수동 입력 row(notion_id 없음)는 건드리지 않습니다."
+    )
+    if st.button("🔍 미리보기", use_container_width=True, key="orphan_preview_btn"):
+        with st.spinner("노션 조회 + 비교 중..."):
+            try:
+                _notion_df = load_sales_data()
+                _orphans = ct.find_orphan_contracts(_notion_df)
+                st.session_state["_orphans_preview"] = _orphans
+            except Exception as e:
+                st.error(f"조회 실패: {e}")
+
+    if "_orphans_preview" in st.session_state:
+        _orphans = st.session_state["_orphans_preview"]
+        if _orphans.empty:
+            st.success("✅ 정리할 row 없음 — 모두 노션과 일치")
+            if st.button("닫기", use_container_width=True, key="orphan_close_btn"):
+                del st.session_state["_orphans_preview"]
+                st.rerun()
+        else:
+            st.warning(f"⚠️ 정리 대상 **{len(_orphans)}건**")
+            for _, _r in _orphans.head(15).iterrows():
+                _name = _r.get("건명") or "(이름 없음)"
+                _cust = _r.get("고객기관") or "-"
+                _nid_short = str(_r.get("notion_id") or "")[:8]
+                st.caption(f"• {str(_name)[:25]} | {str(_cust)[:12]} | {_nid_short}…")
+            if len(_orphans) > 15:
+                st.caption(f"… 외 {len(_orphans) - 15}건")
+            st.markdown("---")
+            if st.button("🗑️ 실제 삭제", type="primary", use_container_width=True, key="orphan_delete_btn"):
+                with st.spinner(f"{len(_orphans)}건 삭제 중..."):
+                    try:
+                        _cids = _orphans["contract_id"].tolist()
+                        _dc, _dp = ct.delete_contracts_by_ids(_cids)
+                        st.success(f"✅ 계약 {_dc}건 + 결제 회차 {_dp}건 삭제")
+                        del st.session_state["_orphans_preview"]
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"삭제 실패: {e}")
+            if st.button("취소", use_container_width=True, key="orphan_cancel_btn"):
+                del st.session_state["_orphans_preview"]
+                st.rerun()
+
 # ============== 데이터 로드 ==============
 try:
     contracts_df = ct.filter_active_contracts(ct.load_contracts())
