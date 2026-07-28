@@ -155,53 +155,50 @@ st.markdown(
 # ============== Sync 영역 ==============
 st.sidebar.header("🔧 작업")
 
-if st.sidebar.button("🔄 신규 데이터 수집", use_container_width=True):
-    with st.spinner("Notion 영업현황 조회 중..."):
-        try:
-            notion_df = load_sales_data()
-            added_c, added_p = ct.sync_from_notion(notion_df)
-            st.sidebar.success(f"✅ 신규 계약 {added_c}건, 결제 회차 {added_p}건 추가")
-            st.cache_data.clear()
-        except Exception as e:
-            st.sidebar.error(f"동기화 실패: {e}")
-
 if st.sidebar.button(
-    "🔄 기존 데이터 갱신",
+    "🔄 데이터 동기화",
     use_container_width=True,
     help=(
-        "Notion 변경 사항을 Sheets에 반영합니다. "
-        "메타(고객기관·건명·서비스명·신규갱신·정산유형·계약일·총금액·구독시작/종료일) → "
-        "분납회차(부족한 결제 회차 row 자동 생성) 순으로 실행."
+        "Notion 영업현황을 Sheets에 전체 반영합니다. "
+        "신규 계약·결제 회차 추가 → 메타(고객기관·건명·서비스명·신규갱신·정산유형·계약일·총금액·구독시작/종료일) 갱신 → "
+        "분납회차 갱신(부족한 결제 회차 row 자동 생성) → 캐시 새로고침 순으로 실행."
     ),
 ):
-    with st.spinner("기존 데이터 갱신 중..."):
-        try:
+    try:
+        with st.spinner("Notion 영업현황 조회 중..."):
             notion_df = load_sales_data()
+
+        with st.spinner("신규 데이터 수집 중..."):
+            added_c, added_p = ct.sync_from_notion(notion_df)
+
+        with st.spinner("기존 데이터 갱신 중..."):
             meta_n = ct.resync_meta_from_notion(notion_df)
             inst_upd, inst_added = ct.resync_installments_from_notion(notion_df)
-            parts = []
-            if meta_n > 0:
-                parts.append(f"메타 {meta_n}건")
-            if inst_upd > 0:
-                parts.append(f"분납회차 {inst_upd}건 (회차 {inst_added}개 추가)")
-            if parts:
-                st.sidebar.success("✅ " + " · ".join(parts) + " 갱신")
-            else:
-                st.sidebar.info("갱신할 항목 없음 (모두 최신)")
-            st.cache_data.clear()
-        except Exception as e:
-            msg = str(e)
-            if "429" in msg or "Quota" in msg:
-                st.sidebar.error(
-                    "⏳ Google Sheets 분당 읽기 할당량 초과. **1분 후 다시 시도**해주세요. "
-                    "(연속 클릭·다른 페이지 동시 로드가 누적되면 발생)"
-                )
-            else:
-                st.sidebar.error(f"갱신 실패: {msg}")
 
-if st.sidebar.button("♻️ 캐시 새로고침", use_container_width=True):
-    ct.invalidate_cache()
-    st.rerun()
+        parts = []
+        if added_c > 0 or added_p > 0:
+            parts.append(f"신규 계약 {added_c}건 · 결제 회차 {added_p}건 추가")
+        if meta_n > 0:
+            parts.append(f"메타 {meta_n}건 갱신")
+        if inst_upd > 0:
+            parts.append(f"분납회차 {inst_upd}건 갱신 (회차 {inst_added}개 추가)")
+        if parts:
+            st.sidebar.success("✅ " + " · ".join(parts))
+        else:
+            st.sidebar.info("변경 사항 없음 (모두 최신)")
+
+        ct.invalidate_cache()
+        st.cache_data.clear()
+        st.rerun()
+    except Exception as e:
+        msg = str(e)
+        if "429" in msg or "Quota" in msg:
+            st.sidebar.error(
+                "⏳ Google Sheets 분당 읽기 할당량 초과. **1분 후 다시 시도**해주세요. "
+                "(연속 클릭·다른 페이지 동시 로드가 누적되면 발생)"
+            )
+        else:
+            st.sidebar.error(f"동기화 실패: {msg}")
 
 # 노션에서 삭제·상태변경된 시트 row 정리 — 2단계(미리보기 → 실제 삭제)
 with st.sidebar.expander("🧹 노션 삭제 row 정리"):
@@ -290,7 +287,7 @@ except Exception as e:
 if contracts_df.empty:
     st.info(
         "👋 아직 등록된 계약이 없습니다. 좌측 사이드바의 "
-        "**'신규 데이터 수집'** 버튼을 눌러 동기화하세요."
+        "**'데이터 동기화'** 버튼을 눌러 Notion에서 가져오세요."
     )
     st.stop()
 
