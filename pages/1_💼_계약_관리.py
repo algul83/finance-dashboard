@@ -596,9 +596,12 @@ st.markdown(
         align-items: center !important;
     }
     /* 전체 펼치기/접기 버튼 — 커스텀 height 오버라이드 없이 Streamlit 기본 스타일 사용.
-       단, 텍스트 wrap만 방지해 두 버튼이 자연스럽게 동일 높이가 되도록 함. */
-    div.st-key-expand_all_btn button p,
-    div.st-key-collapse_all_btn button p {
+       버튼 안 모든 요소에 nowrap 강제해 wrap으로 인한 높이 불일치 방지.
+       (라벨에도 NBSP를 써 브라우저가 공백에서 break하지 못하게 이중 방어) */
+    div.st-key-expand_all_btn button,
+    div.st-key-expand_all_btn button *,
+    div.st-key-collapse_all_btn button,
+    div.st-key-collapse_all_btn button * {
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
@@ -613,7 +616,7 @@ st.markdown(
 if "contract_tab_choice" not in st.session_state:
     st.session_state["contract_tab_choice"] = "active"
 
-_tab_col, _spacer_col, _exp_col, _col_col = st.columns([4, 2, 3, 3])
+_tab_col, _spacer_col, _exp_col, _col_col = st.columns([3, 1, 4, 4])
 
 with _tab_col:
     _selected_tab = st.segmented_control(
@@ -629,12 +632,12 @@ with _tab_col:
     )
 
 with _exp_col:
-    if st.button("전체 펼치기", use_container_width=True, key="expand_all_btn"):
+    if st.button("전체 펼치기", use_container_width=True, key="expand_all_btn"):
         for _cid in customer_contracts["contract_id"]:
             st.session_state[f"expand_{_cid}"] = True
         st.rerun()
 with _col_col:
-    if st.button("전체 접기", use_container_width=True, key="collapse_all_btn"):
+    if st.button("전체 접기", use_container_width=True, key="collapse_all_btn"):
         for _cid in customer_contracts["contract_id"]:
             st.session_state[f"expand_{_cid}"] = False
         st.rerun()
