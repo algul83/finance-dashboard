@@ -595,40 +595,13 @@ st.markdown(
         display: flex !important;
         align-items: center !important;
     }
-    /* 탭(segmented_control)이 있는 row의 모든 버튼을 38px로 강제 — 탭과 동일 높이 */
-    div[data-testid="stHorizontalBlock"]:has(div[data-testid="stSegmentedControl"]) button {
-        height: 38px !important;
-        min-height: 38px !important;
-        max-height: 38px !important;
-        padding: 0 14px !important;
-        line-height: 1 !important;
-        box-sizing: border-box !important;
-    }
-    /* 모두 펼치기/접기 버튼 — key 기반 직접 타겟팅으로 높이 완전 통일 */
-    div.st-key-expand_all_btn button,
-    div.st-key-collapse_all_btn button {
-        height: 38px !important;
-        min-height: 38px !important;
-        max-height: 38px !important;
-        padding: 0 8px !important;
-        line-height: 1 !important;
-        box-sizing: border-box !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        overflow: hidden !important;
-    }
+    /* 전체 펼치기/접기 버튼 — 커스텀 height 오버라이드 없이 Streamlit 기본 스타일 사용.
+       단, 텍스트 wrap만 방지해 두 버튼이 자연스럽게 동일 높이가 되도록 함. */
     div.st-key-expand_all_btn button p,
     div.st-key-collapse_all_btn button p {
-        margin: 0 !important;
-        line-height: 1 !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-    }
-    /* segmented_control 자체 + 내부 버튼도 38px 통일 */
-    div[data-testid="stSegmentedControl"] {
-        min-height: 38px !important;
     }
     </style>
     """,
