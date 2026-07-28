@@ -604,6 +604,28 @@ st.markdown(
         line-height: 1 !important;
         box-sizing: border-box !important;
     }
+    /* 모두 펼치기/접기 버튼 — key 기반 직접 타겟팅으로 높이 완전 통일 */
+    div.st-key-expand_all_btn button,
+    div.st-key-collapse_all_btn button {
+        height: 38px !important;
+        min-height: 38px !important;
+        max-height: 38px !important;
+        padding: 0 8px !important;
+        line-height: 1 !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        overflow: hidden !important;
+    }
+    div.st-key-expand_all_btn button p,
+    div.st-key-collapse_all_btn button p {
+        margin: 0 !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
     /* segmented_control 자체 + 내부 버튼도 38px 통일 */
     div[data-testid="stSegmentedControl"] {
         min-height: 38px !important;
