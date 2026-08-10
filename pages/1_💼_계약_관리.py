@@ -8,7 +8,7 @@ import streamlit as st
 
 import contracts as ct
 from auth import require_auth
-from data_loader import load_sales_data
+from data_loader import load_sales_data, notion_source_status
 
 # ============== 색상 ==============
 PRIMARY = "#5B43C9"
@@ -155,6 +155,13 @@ st.markdown(
 # ============== Sync 영역 ==============
 st.sidebar.header("🔧 작업")
 
+# 직전 실행(동기화 등)의 결과 메시지 — st.rerun() 이후에도 1회 노출되도록 세션에 보관.
+# (st.rerun() 직전에 띄운 success/info/error는 즉시 재실행으로 지워지므로 여기서 렌더)
+_pending_msg = st.session_state.pop("_sync_msg", None)
+if _pending_msg:
+    _kind, _text = _pending_msg
+    getattr(st.sidebar, _kind)(_text)
+
 if st.sidebar.button(
     "🔄 데이터 동기화",
     use_container_width=True,
@@ -183,9 +190,13 @@ if st.sidebar.button(
         if inst_upd > 0:
             parts.append(f"분납회차 {inst_upd}건 갱신 (회차 {inst_added}개 추가)")
         if parts:
-            st.sidebar.success("✅ " + " · ".join(parts))
+            st.session_state["_sync_msg"] = ("success", "✅ " + " · ".join(parts))
         else:
-            st.sidebar.info("변경 사항 없음 (모두 최신)")
+            st.session_state["_sync_msg"] = (
+                "info",
+                "변경 사항 없음 (모두 최신). Notion에 새 '성공' 계약이 있는데도 이 메시지가 "
+                "나오면, 아래 **'🔌 Notion 연결 진단'**으로 앱이 2026 DB를 보는지 확인하세요.",
+            )
 
         ct.invalidate_cache()
         st.cache_data.clear()
@@ -193,12 +204,40 @@ if st.sidebar.button(
     except Exception as e:
         msg = str(e)
         if "429" in msg or "Quota" in msg:
-            st.sidebar.error(
+            st.session_state["_sync_msg"] = (
+                "error",
                 "⏳ Google Sheets 분당 읽기 할당량 초과. **1분 후 다시 시도**해주세요. "
-                "(연속 클릭·다른 페이지 동시 로드가 누적되면 발생)"
+                "(연속 클릭·다른 페이지 동시 로드가 누적되면 발생)",
             )
         else:
-            st.sidebar.error(f"동기화 실패: {msg}")
+            st.session_state["_sync_msg"] = ("error", f"동기화 실패: {msg}")
+        st.rerun()
+
+# Notion 연결 진단 — 앱의 토큰이 각 연도 DB를 실제로 보는지 즉석 점검.
+# '동기화해도 변경 사항 없음'이 반복될 때 앱이 최신 데이터를 못 보는지 확인용.
+with st.sidebar.expander("🔌 Notion 연결 진단"):
+    st.caption(
+        "앱의 Notion 토큰이 각 연도 DB를 조회할 수 있는지, 그리고 앱이 보는 "
+        "'최신 추가일'이 언제까지인지 확인합니다. 최신 추가일이 실제 노션보다 "
+        "과거에 멈춰 있거나 '실패'가 뜨면, 해당 DB에 integration 연결이 끊긴 것입니다 "
+        "(노션에서 DB → ••• → 연결(Connections)에 앱 integration 추가 필요)."
+    )
+    if st.button("연결 점검 실행", use_container_width=True, key="notion_diag_btn"):
+        with st.spinner("Notion 각 DB 조회 중..."):
+            try:
+                st.session_state["_notion_diag"] = notion_source_status()
+            except Exception as e:
+                st.session_state["_notion_diag"] = [
+                    {"label": "오류", "ok": False, "error": f"{type(e).__name__}: {e}"}
+                ]
+    for _row in st.session_state.get("_notion_diag", []):
+        if _row.get("ok"):
+            _latest = _row.get("latest")
+            _latest_txt = str(_latest)[:10] if _latest else "행 없음"
+            _nm = _row.get("latest_name") or "-"
+            st.success(f"**{_row['label']}**: 접근 OK · 최신 추가 {_latest_txt} ({_nm})")
+        else:
+            st.error(f"**{_row['label']}**: 접근 실패 — {_row.get('error', '')}")
 
 # 노션에서 삭제·상태변경된 시트 row 정리 — 2단계(미리보기 → 실제 삭제)
 with st.sidebar.expander("🧹 노션 삭제 row 정리"):
