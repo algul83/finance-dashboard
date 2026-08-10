@@ -506,17 +506,21 @@ applied_inv_filter = None
 if not _issued.empty:
     _inv_min = _issued.min().date()
     _inv_max = _issued.max().date()
+    _today = date.today()
+    # 종료일 상한을 오늘까지 확장 — 아직 세금계산서를 안 끊은 최신 계약(발행일 공란)도
+    # 기간에 포함해 조회할 수 있게. 시작일 상한도 같이 오늘까지 허용.
+    _range_max = max(_inv_max, _today)
 
     if "inv_start" not in st.session_state:
         st.session_state["inv_start"] = _inv_min
     if "inv_end" not in st.session_state:
-        st.session_state["inv_end"] = _inv_max
+        st.session_state["inv_end"] = _today
 
     _fc = st.columns([1.5, 0.2, 1.5, 4, 1, 1])
     with _fc[0]:
         st.date_input(
             "📅 시작일",
-            min_value=_inv_min, max_value=_inv_max,
+            min_value=_inv_min, max_value=_range_max,
             key="inv_start",
         )
     with _fc[1]:
@@ -528,7 +532,7 @@ if not _issued.empty:
     with _fc[2]:
         st.date_input(
             "📅 종료일",
-            min_value=_inv_min, max_value=_inv_max,
+            min_value=_inv_min, max_value=_range_max,
             key="inv_end",
         )
     with _fc[4]:
