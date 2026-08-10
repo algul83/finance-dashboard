@@ -743,7 +743,7 @@ st.markdown(
 if "contract_tab_choice" not in st.session_state:
     st.session_state["contract_tab_choice"] = "active"
 
-_tab_col, _spacer_col, _exp_col, _col_col = st.columns([3, 1, 4, 4])
+_tab_col, _spacer_col, _exp_col, _col_col = st.columns([4, 6, 1, 1])
 
 with _tab_col:
     _selected_tab = st.segmented_control(
@@ -759,12 +759,12 @@ with _tab_col:
     )
 
 with _exp_col:
-    if st.button("전체 펼치기", use_container_width=True, key="expand_all_btn"):
+    if st.button("⏬", help="전체 펼치기", use_container_width=True, key="expand_all_btn"):
         for _cid in customer_contracts["contract_id"]:
             st.session_state[f"expand_{_cid}"] = True
         st.rerun()
 with _col_col:
-    if st.button("전체 접기", use_container_width=True, key="collapse_all_btn"):
+    if st.button("⏫", help="전체 접기", use_container_width=True, key="collapse_all_btn"):
         for _cid in customer_contracts["contract_id"]:
             st.session_state[f"expand_{_cid}"] = False
         st.rerun()
