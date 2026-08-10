@@ -786,12 +786,12 @@ with _tab_col:
     )
 
 with _exp_col:
-    if st.button("⏬", help="전체 펼치기", use_container_width=True, key="expand_all_btn"):
+    if st.button("", icon=":material/unfold_more:", help="전체 펼치기", use_container_width=True, key="expand_all_btn"):
         for _cid in customer_contracts["contract_id"]:
             st.session_state[f"expand_{_cid}"] = True
         st.rerun()
 with _col_col:
-    if st.button("⏫", help="전체 접기", use_container_width=True, key="collapse_all_btn"):
+    if st.button("", icon=":material/unfold_less:", help="전체 접기", use_container_width=True, key="collapse_all_btn"):
         for _cid in customer_contracts["contract_id"]:
             st.session_state[f"expand_{_cid}"] = False
         st.rerun()
