@@ -414,22 +414,23 @@ if contracts_df.empty:
     )
     st.stop()
 
-# ============== 상단 KPI (발행일 기간 필터 적용 — 진행중 + 종료 포함) ==============
+# ============== 상단 KPI (계약일 기간 필터 적용 — 진행중 + 종료 포함) ==============
 _applied_inv_for_kpi = st.session_state.get("inv_applied")
 _kpi_contracts = contracts_df
 _kpi_payments = payments_df
 
-if _applied_inv_for_kpi and not payments_df.empty:
+if _applied_inv_for_kpi:
     _ks, _ke = _applied_inv_for_kpi["start"], _applied_inv_for_kpi["end"]
-    _matched_kpi_cids = set(
-        payments_df[
-            payments_df["발행일"].notna()
-            & (payments_df["발행일"].dt.date >= _ks)
-            & (payments_df["발행일"].dt.date <= _ke)
-        ]["contract_id"].unique()
+    _kpi_contracts = contracts_df[
+        contracts_df["계약일"].notna()
+        & (contracts_df["계약일"].dt.date >= _ks)
+        & (contracts_df["계약일"].dt.date <= _ke)
+    ]
+    _matched_kpi_cids = set(_kpi_contracts["contract_id"].unique())
+    _kpi_payments = (
+        payments_df[payments_df["contract_id"].isin(_matched_kpi_cids)]
+        if not payments_df.empty else payments_df
     )
-    _kpi_contracts = contracts_df[contracts_df["contract_id"].isin(_matched_kpi_cids)]
-    _kpi_payments = payments_df[payments_df["contract_id"].isin(_matched_kpi_cids)]
 
 total_amount = _kpi_contracts["총금액"].sum()
 total_paid = ct.effective_paid_amount(_kpi_payments)
@@ -440,7 +441,7 @@ _kpi_caption = ""
 if _applied_inv_for_kpi:
     _kpi_caption = (
         f"<div style='font-size:0.75rem;color:#8B8A95;margin:-8px 0 6px'>"
-        f"📅 발행일 {_applied_inv_for_kpi['start']} ~ {_applied_inv_for_kpi['end']} 기간 기준</div>"
+        f"📅 계약일 {_applied_inv_for_kpi['start']} ~ {_applied_inv_for_kpi['end']} 기간 기준</div>"
     )
     st.markdown(_kpi_caption, unsafe_allow_html=True)
 
@@ -500,15 +501,15 @@ with col_clear:
         help="검색어를 지우고 전체 계약 목록으로 돌아갑니다",
     )
 
-# ----- 세금계산서 발행일 기간 필터 -----
-_issued = payments_df["발행일"].dropna() if not payments_df.empty else pd.Series(dtype="datetime64[ns]")
+# ----- 계약일 기간 필터 -----
+_cdates = contracts_df["계약일"].dropna() if not contracts_df.empty else pd.Series(dtype="datetime64[ns]")
 applied_inv_filter = None
-if not _issued.empty:
-    _inv_min = _issued.min().date()
-    _inv_max = _issued.max().date()
+if not _cdates.empty:
+    _inv_min = _cdates.min().date()
+    _inv_max = _cdates.max().date()
     _today = date.today()
-    # 종료일 상한을 오늘까지 확장 — 아직 세금계산서를 안 끊은 최신 계약(발행일 공란)도
-    # 기간에 포함해 조회할 수 있게. 시작일 상한도 같이 오늘까지 허용.
+    # 종료일 상한을 오늘까지 확장 — 아직 계약일이 오늘 이후가 없더라도 오늘까지 선택 가능.
+    # 시작일 상한도 같이 오늘까지 허용.
     _range_max = max(_inv_max, _today)
 
     if "inv_start" not in st.session_state:
@@ -635,15 +636,14 @@ if (issue_filter or paid_filter or method_filter) and not customer_contracts.emp
         )
     customer_contracts = customer_contracts[mask]
 
-# 발행일 기간 필터 — 적용된 경우 해당 범위에 발행일이 있는 회차를 가진 계약만 통과
-if applied_inv_filter and not customer_contracts.empty and not payments_df.empty:
+# 계약일 기간 필터 — 적용된 경우 계약일이 해당 범위에 있는 계약만 통과
+if applied_inv_filter and not customer_contracts.empty:
     _s, _e = applied_inv_filter["start"], applied_inv_filter["end"]
-    _matched = payments_df[
-        payments_df["발행일"].notna()
-        & (payments_df["발행일"].dt.date >= _s)
-        & (payments_df["발행일"].dt.date <= _e)
-    ]["contract_id"].unique()
-    customer_contracts = customer_contracts[customer_contracts["contract_id"].isin(_matched)]
+    customer_contracts = customer_contracts[
+        customer_contracts["계약일"].notna()
+        & (customer_contracts["계약일"].dt.date >= _s)
+        & (customer_contracts["계약일"].dt.date <= _e)
+    ]
 
 # 검색 결과 요약 (검색어 입력 시)
 if search_query:
