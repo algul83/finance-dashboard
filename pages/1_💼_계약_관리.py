@@ -29,6 +29,16 @@ st.markdown(
     html, body, *, [class*="css"], button, input, select, textarea {{
         font-family: 'Pretendard', 'Malgun Gothic', '맑은 고딕', -apple-system, sans-serif !important;
     }}
+    /* Material 아이콘(글꼴 리거처)이 위 전역 font-family !important에 덮여 텍스트("unfold_more")로
+       보이는 문제 방지 — 아이콘 요소엔 Material Symbols 폰트를 복원 */
+    span[data-testid="stIconMaterial"],
+    [data-testid="stIconMaterial"],
+    .material-icons, .material-icons-outlined,
+    .material-symbols-rounded, .material-symbols-outlined,
+    [class*="material-symbols"], [class*="material-icons"] {{
+        font-family: 'Material Symbols Rounded', 'Material Symbols Outlined',
+            'Material Icons', 'Material Icons Outlined' !important;
+    }}
     .stApp {{ background: white; padding-top: 64px; }}
     [data-testid="stAppViewContainer"] {{ background: white !important; }}
     body, html {{ background: white !important; }}
