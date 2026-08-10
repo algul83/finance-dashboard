@@ -529,7 +529,7 @@ if not _cdates.empty:
     _fc = st.columns([1.5, 0.2, 1.5, 4, 1, 1])
     with _fc[0]:
         st.date_input(
-            "📅 시작일",
+            "📅 계약 시작일",
             min_value=_inv_min, max_value=_range_max,
             key="inv_start",
         )
@@ -541,7 +541,7 @@ if not _cdates.empty:
         )
     with _fc[2]:
         st.date_input(
-            "📅 종료일",
+            "📅 계약 종료일",
             min_value=_inv_min, max_value=_range_max,
             key="inv_end",
         )
