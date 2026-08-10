@@ -511,6 +511,16 @@ with col_clear:
     )
 
 # ----- 계약일 기간 필터 -----
+# 정렬 옵션 (라벨 → (컬럼, 오름차순)). 계약 종료일 필터 옆에서 선택, 목록 렌더 시 적용.
+_SORT_OPTIONS = {
+    "정렬 없음": None,
+    "계약 시작일 ↑": ("구독시작일", True),
+    "계약 시작일 ↓": ("구독시작일", False),
+    "계약 종료일 ↑": ("구독종료일", True),
+    "계약 종료일 ↓": ("구독종료일", False),
+}
+_sort_spec = None
+
 _cdates = contracts_df["계약일"].dropna() if not contracts_df.empty else pd.Series(dtype="datetime64[ns]")
 applied_inv_filter = None
 if not _cdates.empty:
@@ -526,7 +536,7 @@ if not _cdates.empty:
     if "inv_end" not in st.session_state:
         st.session_state["inv_end"] = _today
 
-    _fc = st.columns([1.5, 0.2, 1.5, 4, 1, 1])
+    _fc = st.columns([1.4, 0.15, 1.4, 2.4, 0.9, 0.85, 0.85])
     with _fc[0]:
         st.date_input(
             "📅 계약 시작일",
@@ -545,14 +555,21 @@ if not _cdates.empty:
             min_value=_inv_min, max_value=_range_max,
             key="inv_end",
         )
-    with _fc[4]:
+    with _fc[3]:
+        _sort_label = st.selectbox(
+            "🔀 정렬",
+            options=list(_SORT_OPTIONS.keys()),
+            key="contract_sort",
+        )
+        _sort_spec = _SORT_OPTIONS.get(_sort_label)
+    with _fc[5]:
         st.markdown('<div style="margin-top:28px;"></div>', unsafe_allow_html=True)
         if st.button("적용", use_container_width=True, key="inv_apply_btn", type="primary"):
             st.session_state["inv_applied"] = {
                 "start": st.session_state["inv_start"],
                 "end": st.session_state["inv_end"],
             }
-    with _fc[5]:
+    with _fc[6]:
         st.markdown('<div style="margin-top:28px;"></div>', unsafe_allow_html=True)
         if st.session_state.get("inv_applied"):
             if st.button("해제", use_container_width=True, key="inv_clear_btn"):
@@ -731,6 +748,13 @@ st.markdown(
         display: flex !important;
         align-items: center !important;
     }
+    /* 탭(진행 중/종료) 옵션이 좁을 때 두 줄로 줄바꿈되지 않도록 가로 유지 */
+    div[data-testid="stSegmentedControl"] > div {
+        flex-wrap: nowrap !important;
+    }
+    div[data-testid="stSegmentedControl"] button p {
+        white-space: nowrap !important;
+    }
     /* 전체 펼치기/접기 아이콘 버튼 — 두 버튼 높이를 동일하게 고정.
        (이모지 글리프 세로 메트릭 차이로 auto-height가 달라지던 문제 방지) */
     div.st-key-expand_all_btn button,
@@ -779,7 +803,7 @@ st.markdown(
 if "contract_tab_choice" not in st.session_state:
     st.session_state["contract_tab_choice"] = "active"
 
-_tab_col, _sort_col, _spacer_col, _exp_col, _col_col = st.columns([3.2, 3, 4.6, 0.6, 0.6])
+_tab_col, _spacer_col, _exp_col, _col_col = st.columns([5, 5, 0.8, 0.8])
 
 with _tab_col:
     _selected_tab = st.segmented_control(
@@ -793,23 +817,6 @@ with _tab_col:
         key="contract_tab_choice",
         label_visibility="collapsed",
     )
-
-# 정렬 옵션: 라벨 → (컬럼, 오름차순 여부)
-_SORT_OPTIONS = {
-    "정렬 없음": None,
-    "계약 시작일 ↑ (오름차순)": ("구독시작일", True),
-    "계약 시작일 ↓ (내림차순)": ("구독시작일", False),
-    "계약 종료일 ↑ (오름차순)": ("구독종료일", True),
-    "계약 종료일 ↓ (내림차순)": ("구독종료일", False),
-}
-with _sort_col:
-    _sort_label = st.selectbox(
-        "정렬",
-        options=list(_SORT_OPTIONS.keys()),
-        key="contract_sort",
-        label_visibility="collapsed",
-    )
-_sort_spec = _SORT_OPTIONS.get(_sort_label)
 
 with _exp_col:
     if st.button("", icon=":material/unfold_more:", help="전체 펼치기", use_container_width=True, key="expand_all_btn"):
