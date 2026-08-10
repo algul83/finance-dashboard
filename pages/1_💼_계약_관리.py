@@ -725,16 +725,34 @@ st.markdown(
     /* 전체 펼치기/접기 아이콘 버튼 — 두 버튼 높이를 동일하게 고정.
        (이모지 글리프 세로 메트릭 차이로 auto-height가 달라지던 문제 방지) */
     div.st-key-expand_all_btn button,
-    div.st-key-collapse_all_btn button {
+    div.st-key-collapse_all_btn button,
+    div.st-key-expand_all_btn button:hover,
+    div.st-key-collapse_all_btn button:hover,
+    div.st-key-expand_all_btn button:active,
+    div.st-key-collapse_all_btn button:active,
+    div.st-key-expand_all_btn button:focus,
+    div.st-key-collapse_all_btn button:focus,
+    div.st-key-expand_all_btn button:focus-visible,
+    div.st-key-collapse_all_btn button:focus-visible {
         height: 40px !important;
         min-height: 40px !important;
         max-height: 40px !important;
         padding: 0 !important;
         line-height: 1 !important;
-        font-size: 1.05rem !important;
+        font-size: 1.2rem !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        /* 아이콘을 감싼 네모(테두리·배경·그림자) 제거 */
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+    div.st-key-expand_all_btn button:hover,
+    div.st-key-collapse_all_btn button:hover {
+        /* hover 시 아이콘만 살짝 강조 (네모 없이) */
+        filter: brightness(0.75) !important;
     }
     div.st-key-expand_all_btn button *,
     div.st-key-collapse_all_btn button * {
