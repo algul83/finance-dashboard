@@ -136,6 +136,51 @@ def load_sales_data() -> pd.DataFrame:
     return df
 
 
+# 연도 라벨 (진단 표시용) — DATA_SOURCE_IDS 순서와 대응
+_SOURCE_LABELS = {
+    DATA_SOURCE_IDS[0]: "2026",
+    DATA_SOURCE_IDS[1]: "2025",
+    DATA_SOURCE_IDS[2]: "2024",
+    DATA_SOURCE_IDS[3]: "2023",
+}
+
+
+def notion_source_status() -> list[dict]:
+    """앱의 Notion 토큰(integration)이 각 연도 데이터 소스를 실제로 조회할 수 있는지
+    즉석 점검. 캐시를 쓰지 않아 항상 실측값이며, 각 소스가 보이는 '최신 추가일시'까지
+    돌려줘 '앱이 어디까지 보는지'를 눈으로 확인할 수 있게 한다.
+
+    반환: [{"label","id","ok", (성공 시) "latest","latest_name", (실패 시) "error"}]
+    """
+    token = _token()
+    if not token:
+        return [{"label": "토큰", "id": "-", "ok": False,
+                 "error": "NOTION_TOKEN이 설정되지 않았습니다 (secrets.toml 또는 환경변수)"}]
+
+    notion = Client(auth=token)
+    out = []
+    for ds_id in DATA_SOURCE_IDS:
+        row = {"label": _SOURCE_LABELS.get(ds_id, ds_id[:8]), "id": ds_id}
+        try:
+            resp = notion.data_sources.query(
+                data_source_id=ds_id,
+                page_size=1,
+                sorts=[{"timestamp": "created_time", "direction": "descending"}],
+            )
+            results = resp.get("results", [])
+            row["ok"] = True
+            if results:
+                row["latest"] = results[0].get("created_time", "")
+                row["latest_name"] = _prop(results[0], "Name")
+            else:
+                row["latest"] = None
+        except Exception as e:  # noqa: BLE001 — 진단이므로 원문 메시지 그대로 노출
+            row["ok"] = False
+            row["error"] = str(e)[:300]
+        out.append(row)
+    return out
+
+
 def explode_services(df: pd.DataFrame) -> pd.DataFrame:
     """서비스명(multi_select) 폭발 → 행별 1서비스."""
     tmp = df.copy()
