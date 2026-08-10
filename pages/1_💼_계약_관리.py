@@ -779,7 +779,7 @@ st.markdown(
 if "contract_tab_choice" not in st.session_state:
     st.session_state["contract_tab_choice"] = "active"
 
-_tab_col, _spacer_col, _exp_col, _col_col = st.columns([4, 6, 1, 1])
+_tab_col, _sort_col, _spacer_col, _exp_col, _col_col = st.columns([3.2, 3, 4.6, 0.6, 0.6])
 
 with _tab_col:
     _selected_tab = st.segmented_control(
@@ -793,6 +793,23 @@ with _tab_col:
         key="contract_tab_choice",
         label_visibility="collapsed",
     )
+
+# 정렬 옵션: 라벨 → (컬럼, 오름차순 여부)
+_SORT_OPTIONS = {
+    "정렬 없음": None,
+    "계약 시작일 ↑ (오름차순)": ("구독시작일", True),
+    "계약 시작일 ↓ (내림차순)": ("구독시작일", False),
+    "계약 종료일 ↑ (오름차순)": ("구독종료일", True),
+    "계약 종료일 ↓ (내림차순)": ("구독종료일", False),
+}
+with _sort_col:
+    _sort_label = st.selectbox(
+        "정렬",
+        options=list(_SORT_OPTIONS.keys()),
+        key="contract_sort",
+        label_visibility="collapsed",
+    )
+_sort_spec = _SORT_OPTIONS.get(_sort_label)
 
 with _exp_col:
     if st.button("", icon=":material/unfold_more:", help="전체 펼치기", use_container_width=True, key="expand_all_btn"):
@@ -810,6 +827,18 @@ with _col_col:
 # 사용자가 선택 해제(None)한 경우 진행 중으로 fallback
 if _selected_tab is None:
     _selected_tab = "active"
+
+# 정렬 적용 — 계약 시작일(구독시작일)/계약 종료일(구독종료일) 기준 오름·내림차순
+if _sort_spec:
+    _sort_col_name, _sort_asc = _sort_spec
+    if _sort_col_name in _active_contracts.columns:
+        _active_contracts = _active_contracts.sort_values(
+            _sort_col_name, ascending=_sort_asc, na_position="last"
+        )
+    if _sort_col_name in _ended_contracts.columns:
+        _ended_contracts = _ended_contracts.sort_values(
+            _sort_col_name, ascending=_sort_asc, na_position="last"
+        )
 
 
 def _render_contract_card(c, card_idx: int = 0):
