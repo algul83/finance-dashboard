@@ -1,6 +1,7 @@
 """계약 도메인 로직: Notion 영업현황 → Sheets 동기화 + 결제 회차 관리."""
 from __future__ import annotations
 
+import re
 import time
 
 import pandas as pd
@@ -149,6 +150,24 @@ def invalidate_cache():
     load_payments.clear()
 
 
+def _row_index_by_key(ws, key_col: int) -> dict:
+    """워크시트의 특정 열(1-based) 값 → 실제 시트 행번호(1-based) 매핑.
+
+    빈 행·필터링과 무관하게 '물리적' 행을 정확히 가리킨다. 헤더(1행)는 제외,
+    빈 값은 skip, 중복 값은 첫 행 우선. batch_update가 엉뚱한 셀에 쓰이는 문제
+    (필터링된 DataFrame index + 2로 행을 추정하던 버그)를 막기 위한 안전 매핑.
+    """
+    col = ws.col_values(key_col)  # index 0 = 1행(헤더)
+    out: dict = {}
+    for i, v in enumerate(col):
+        if i == 0:
+            continue
+        v = str(v).strip()
+        if v and v not in out:
+            out[v] = i + 1  # col_values idx i → 실제 행 i+1
+    return out
+
+
 def sheet_diagnostics() -> dict:
     """계약 시트의 실제 연결 대상과 '쓰기→읽기 반영' 여부를 진단 (캐시 우회).
 
@@ -205,6 +224,95 @@ def sheet_diagnostics() -> dict:
     except Exception as e:  # noqa: BLE001 — 진단이므로 원문 노출
         out["error"] = f"{type(e).__name__}: {e}"[:300]
     return out
+
+
+_CID_RE = re.compile(r"^C\d{6,}")   # contract_id: C + 타임스탬프 숫자
+_PID_RE = re.compile(r"^P\d{6,}")   # payment_id: P + 타임스탬프 숫자
+
+
+def _pad(row: list, width: int) -> list:
+    return (list(row) + [""] * width)[:width]
+
+
+def repair_sheets(dry_run: bool = True) -> dict:
+    """깨진 Contracts/Payments 시트를 정리(재구성).
+
+    반복 동기화로 엉뚱한 셀에 쓰인 떠도는 값·빈 행 갭·열이 밀린 중복 행이 쌓인
+    상태를 청소한다. **기존 유효 데이터(수기 입력 포함)는 보존**하고, 다음만 제거:
+      - contract_id(A열)가 `C…` 형식이 아닌 행 (떠도는 숫자·밀린 행·빈 행)
+      - contract_id/notion_id 중복 행 (첫 행만 유지)
+      - Payments: payment_id(A열)가 `P…`가 아니거나, 살아남은 계약을 참조하지 않는 고아 행
+
+    유효 행은 원래 값 그대로(수기 입력 유지) 헤더 아래로 압축 재작성한다.
+    dry_run=True면 쓰지 않고 요약만 반환.
+    """
+    ws_c = get_worksheet("Contracts")
+    ws_p = get_worksheet("Payments")
+    cw, pw = len(CONTRACT_COLUMNS), len(PAYMENT_COLUMNS)
+
+    c_vals = ws_c.get_all_values()
+    p_vals = ws_p.get_all_values()
+    c_body = c_vals[1:] if len(c_vals) > 1 else []
+    p_body = p_vals[1:] if len(p_vals) > 1 else []
+
+    kept_c, seen_cid, seen_nid = [], set(), set()
+    c_junk = c_dup = 0
+    for raw in c_body:
+        row = _pad(raw, cw)
+        cid = str(row[0]).strip()
+        nid = str(row[1]).strip()
+        if not _CID_RE.match(cid):
+            if any(str(x).strip() for x in row):
+                c_junk += 1
+            continue
+        if cid in seen_cid or (nid and nid in seen_nid):
+            c_dup += 1
+            continue
+        seen_cid.add(cid)
+        if nid:
+            seen_nid.add(nid)
+        kept_c.append(row)
+    kept_cids = {r[0].strip() for r in kept_c}
+
+    kept_p, seen_pid = [], set()
+    p_junk = p_orphan = p_dup = 0
+    for raw in p_body:
+        row = _pad(raw, pw)
+        pid = str(row[0]).strip()
+        cid = str(row[1]).strip()
+        if not _PID_RE.match(pid):
+            if any(str(x).strip() for x in row):
+                p_junk += 1
+            continue
+        if pid in seen_pid:
+            p_dup += 1
+            continue
+        if cid not in kept_cids:
+            p_orphan += 1
+            continue
+        seen_pid.add(pid)
+        kept_p.append(row)
+
+    stats = {
+        "dry_run": dry_run,
+        "contracts_raw": len(c_body),
+        "contracts_kept": len(kept_c),
+        "contracts_removed_junk": c_junk,
+        "contracts_removed_dup": c_dup,
+        "payments_raw": len(p_body),
+        "payments_kept": len(kept_p),
+        "payments_removed_junk": p_junk,
+        "payments_removed_dup": p_dup,
+        "payments_removed_orphan": p_orphan,
+    }
+
+    if not dry_run:
+        ws_c.clear()
+        ws_c.update("A1", [CONTRACT_COLUMNS] + kept_c, value_input_option="USER_ENTERED")
+        ws_p.clear()
+        ws_p.update("A1", [PAYMENT_COLUMNS] + kept_p, value_input_option="USER_ENTERED")
+        invalidate_cache()
+    return stats
 
 
 def is_overseas(service_name) -> bool:
@@ -300,9 +408,12 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
 
     if new_contracts:
         ws_c = get_worksheet("Contracts")
+        _ensure_headers(ws_c, CONTRACT_COLUMNS)
         ws_c.append_rows(
             [[c.get(col, "") for col in CONTRACT_COLUMNS] for c in new_contracts],
             value_input_option="USER_ENTERED",
+            table_range="A1",
+            insert_data_option="INSERT_ROWS",
         )
 
     # 결제 회차 생성:
@@ -312,6 +423,7 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
     new_payments_total = 0
     if new_contracts:
         ws_p = get_worksheet("Payments")
+        _ensure_headers(ws_p, PAYMENT_COLUMNS)
         payment_rows = []
         for cid, plan in contract_payment_plan.items():
             n_rounds = plan["분납"] if plan["분납"] > 0 else 1  # 미지정 시 기본 1회
@@ -360,6 +472,8 @@ def sync_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             ws_p.append_rows(
                 [[p.get(col, "") for col in PAYMENT_COLUMNS] for p in payment_rows],
                 value_input_option="USER_ENTERED",
+                table_range="A1",
+                insert_data_option="INSERT_ROWS",
             )
             new_payments_total = len(payment_rows)
 
@@ -432,7 +546,12 @@ def add_payment(contract_id: str, 회차, 청구예정일, 발행일, 금액, �
         "created_at": now.strftime("%Y-%m-%d %H:%M"),
     }
     ws = get_worksheet("Payments")
-    ws.append_row([row.get(c, "") for c in PAYMENT_COLUMNS], value_input_option="USER_ENTERED")
+    ws.append_row(
+        [row.get(c, "") for c in PAYMENT_COLUMNS],
+        value_input_option="USER_ENTERED",
+        table_range="A1",
+        insert_data_option="INSERT_ROWS",
+    )
     invalidate_cache()
 
 
@@ -499,8 +618,9 @@ def resync_meta_from_notion(notion_df: pd.DataFrame) -> int:
     now = pd.Timestamp.now()
 
     ws_c = get_worksheet("Contracts")
-    contract_records = ws_c.get_all_records(expected_headers=CONTRACT_COLUMNS)
-    cid_to_row = {r["contract_id"]: i + 2 for i, r in enumerate(contract_records)}
+    _ensure_headers(ws_c, CONTRACT_COLUMNS)
+    # 실제 시트 행 기반 매핑 (필터링된 DataFrame index 추정 금지 — 엉뚱한 셀 기록 방지)
+    cid_to_row = _row_index_by_key(ws_c, CONTRACT_COLUMNS.index("contract_id") + 1)
 
     from gspread.utils import rowcol_to_a1
 
@@ -585,16 +705,18 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
     notion_by_id = {str(r["id"]): r for _, r in notion_df.iterrows()}
     now = pd.Timestamp.now()
 
-    # Contracts 워크시트 batch update 준비
+    # Contracts / Payments 워크시트 준비
     ws_c = get_worksheet("Contracts")
-    # 캐시된 contracts DF의 index를 row 매핑으로 사용 (1행은 헤더라 +2)
-    # → API read 1회 절약. invalidate_cache 직후 호출이라 정합성 OK.
-    cid_to_row = {
-        row["contract_id"]: i + 2
-        for i, (_, row) in enumerate(contracts.iterrows())
-    }
+    ws_p = get_worksheet("Payments")
+    _ensure_headers(ws_c, CONTRACT_COLUMNS)
+    _ensure_headers(ws_p, PAYMENT_COLUMNS)
+    # 실제 시트 행 기반 매핑 (필터링된 DataFrame index + 2 추정이 엉뚱한 셀에 쓰던
+    # 버그의 원인이었음 — load_contracts가 빈 행을 제거·reset_index 하므로 어긋남)
+    cid_to_row = _row_index_by_key(ws_c, CONTRACT_COLUMNS.index("contract_id") + 1)
+    pid_to_row = _row_index_by_key(ws_p, PAYMENT_COLUMNS.index("payment_id") + 1)
 
-    contract_batch = []  # [{range, values}]
+    contract_batch = []  # [{range, values}] → Contracts 시트
+    payment_batch = []   # [{range, values}] → Payments 시트 (회차 금액 보정)
     payments_to_add = []  # [[row]]
     updated_contracts = 0
     added_rows = 0
@@ -666,25 +788,27 @@ def resync_installments_from_notion(notion_df: pd.DataFrame) -> tuple[int, int]:
             for _, ex_row in existing.iterrows():
                 ex_금액 = float(pd.to_numeric(ex_row.get("금액", 0), errors="coerce") or 0)
                 if abs(ex_금액 - total_amount) < 1:
-                    pid_lookup = ex_row["payment_id"]
-                    # payments DF의 시트 row index 찾기
-                    payment_records = payments  # already loaded
-                    sheet_row_idx = payment_records.index[
-                        payment_records["payment_id"] == pid_lookup
-                    ].tolist()
-                    if sheet_row_idx:
-                        row_idx = sheet_row_idx[0] + 2
-                        contract_batch.append({
-                            "range": rowcol_to_a1(row_idx, col_금액),
+                    pid_lookup = str(ex_row["payment_id"]).strip()
+                    # 실제 Payments 시트 행 번호로 보정 (필터 DF index 추정 금지)
+                    p_row = pid_to_row.get(pid_lookup)
+                    if p_row:
+                        payment_batch.append({
+                            "range": rowcol_to_a1(p_row, col_금액),
                             "values": [[per_amount]],
                         })
 
-    # API 호출 모음: contracts batch_update + payments append (각 1 call)
+    # API 호출 모음: 각 시트에 올바르게 반영 (Contracts/Payments 분리)
     if contract_batch:
         ws_c.batch_update(contract_batch, value_input_option="USER_ENTERED")
+    if payment_batch:
+        ws_p.batch_update(payment_batch, value_input_option="USER_ENTERED")
     if payments_to_add:
-        ws_p = get_worksheet("Payments")
-        ws_p.append_rows(payments_to_add, value_input_option="USER_ENTERED")
+        ws_p.append_rows(
+            payments_to_add,
+            value_input_option="USER_ENTERED",
+            table_range="A1",
+            insert_data_option="INSERT_ROWS",
+        )
         added_rows = len(payments_to_add)
 
     invalidate_cache()
@@ -761,6 +885,8 @@ def ensure_payment_rows(contract_id: str, target_count: int, total_amount: float
         ws.append_rows(
             [[r.get(c, "") for c in PAYMENT_COLUMNS] for r in new_rows],
             value_input_option="USER_ENTERED",
+            table_range="A1",
+            insert_data_option="INSERT_ROWS",
         )
 
     # 분납회차 >= 2 이고 기존 회차 금액이 총금액과 동일(= 분납 누락 상태)이면 per_amount로 보정
@@ -883,10 +1009,14 @@ def create_contract_from_card(card_row) -> str:
     ws_c.append_row(
         [contract_row.get(c, "") for c in CONTRACT_COLUMNS],
         value_input_option="USER_ENTERED",
+        table_range="A1",
+        insert_data_option="INSERT_ROWS",
     )
     ws_p.append_row(
         [payment_row.get(c, "") for c in PAYMENT_COLUMNS],
         value_input_option="USER_ENTERED",
+        table_range="A1",
+        insert_data_option="INSERT_ROWS",
     )
     invalidate_cache()
     return pid

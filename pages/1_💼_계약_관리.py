@@ -275,6 +275,54 @@ with st.sidebar.expander("🧪 시트 쓰기 진단"):
             if _sd.get("cleanup_error"):
                 st.caption(f"(마커 정리 경고: {_sd['cleanup_error']})")
 
+# 시트 정리(재구성) — 떠도는 값·빈 갭·밀린 중복 행 제거. 2단계(미리보기 → 실행).
+with st.sidebar.expander("🧹 시트 정리(재구성)"):
+    st.caption(
+        "반복 동기화로 시트에 쌓인 떠도는 숫자·빈 행·열이 밀린 중복 행을 제거합니다. "
+        "**기존 유효 계약·수기 입력은 보존**하며, 깨진 행만 정리합니다. "
+        "먼저 미리보기로 무엇이 지워질지 확인하세요."
+    )
+    if st.button("🔍 정리 미리보기", use_container_width=True, key="repair_preview_btn"):
+        with st.spinner("시트 분석 중..."):
+            try:
+                st.session_state["_repair_preview"] = ct.repair_sheets(dry_run=True)
+            except Exception as e:
+                st.error(f"미리보기 실패: {e}")
+    _rp = st.session_state.get("_repair_preview")
+    if _rp:
+        st.write(
+            f"**Contracts**: {_rp['contracts_raw']}행 → 유지 **{_rp['contracts_kept']}** "
+            f"(깨짐 {_rp['contracts_removed_junk']} · 중복 {_rp['contracts_removed_dup']} 제거)\n\n"
+            f"**Payments**: {_rp['payments_raw']}행 → 유지 **{_rp['payments_kept']}** "
+            f"(깨짐 {_rp['payments_removed_junk']} · 중복 {_rp['payments_removed_dup']} · "
+            f"고아 {_rp['payments_removed_orphan']} 제거)"
+        )
+        _to_remove = (
+            _rp["contracts_removed_junk"] + _rp["contracts_removed_dup"]
+            + _rp["payments_removed_junk"] + _rp["payments_removed_dup"]
+            + _rp["payments_removed_orphan"]
+        )
+        if _to_remove == 0:
+            st.success("정리할 깨진 행이 없습니다. 시트는 이미 깔끔합니다 ✅")
+        else:
+            st.warning(f"위 내용대로 **{_to_remove}행**을 제거하고 재작성합니다. 되돌릴 수 없습니다.")
+            if st.button("🧹 정리 실행", type="primary", use_container_width=True, key="repair_run_btn"):
+                with st.spinner("시트 재구성 중..."):
+                    try:
+                        _res = ct.repair_sheets(dry_run=False)
+                        st.session_state["_sync_msg"] = (
+                            "success",
+                            f"✅ 시트 정리 완료 — Contracts {_res['contracts_kept']}행 · "
+                            f"Payments {_res['payments_kept']}행 유지. 이제 '데이터 동기화'로 "
+                            f"최신 계약을 다시 가져오세요.",
+                        )
+                        del st.session_state["_repair_preview"]
+                        ct.invalidate_cache()
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"정리 실패: {e}")
+
 # 노션에서 삭제·상태변경된 시트 row 정리 — 2단계(미리보기 → 실제 삭제)
 with st.sidebar.expander("🧹 노션 삭제 row 정리"):
     st.caption(
