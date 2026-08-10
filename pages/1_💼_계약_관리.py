@@ -262,6 +262,8 @@ with st.sidebar.expander("🧪 시트 쓰기 진단"):
                     "쓰기→읽기 반영: **실패** ❌ — 시트에 쓴 값이 다시 읽을 때 "
                     "안 나타납니다 (읽기/쓰기 대상 불일치 의심)."
                 )
+            if _sd.get("spreadsheet_url"):
+                st.markdown(f"🔗 **[이 시트 열기]({_sd['spreadsheet_url']})** — 앱이 실제로 읽고/쓰는 시트")
             st.write(
                 f"- 스프레드시트: **{_sd.get('spreadsheet_title')}** "
                 f"(`{_sd.get('spreadsheet_id')}`, secret=`{_sd.get('secret_sheet_id')}`)\n"

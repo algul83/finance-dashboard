@@ -168,6 +168,10 @@ def sheet_diagnostics() -> dict:
         ss = open_contracts_sheet()
         out["spreadsheet_title"] = ss.title
         out["spreadsheet_id"] = f"{ss.id[:6]}…{ss.id[-4:]}"
+        try:
+            out["spreadsheet_url"] = ss.url
+        except Exception:  # noqa: BLE001
+            out["spreadsheet_url"] = f"https://docs.google.com/spreadsheets/d/{ss.id}"
         ws = get_worksheet("Contracts")
         out["worksheet_title"] = ws.title
 
