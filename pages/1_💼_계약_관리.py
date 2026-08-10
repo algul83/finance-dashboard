@@ -239,6 +239,40 @@ with st.sidebar.expander("🔌 Notion 연결 진단"):
         else:
             st.error(f"**{_row['label']}**: 접근 실패 — {_row.get('error', '')}")
 
+# 시트 쓰기/읽기 진단 — 동기화는 '성공'인데 화면·재조회에 반영이 안 될 때,
+# 앱이 실제로 쓰는 시트와 '쓰기→즉시 읽기'가 반영되는지 확인.
+with st.sidebar.expander("🧪 시트 쓰기 진단"):
+    st.caption(
+        "동기화가 '추가/갱신 N건'이라는데 화면에 안 나타날 때 사용합니다. "
+        "앱이 실제로 어떤 시트를 쓰는지, 방금 쓴 값이 즉시 다시 읽히는지 확인합니다."
+    )
+    if st.button("시트 점검 실행", use_container_width=True, key="sheet_diag_btn"):
+        with st.spinner("시트 쓰기/읽기 테스트 중..."):
+            st.session_state["_sheet_diag"] = ct.sheet_diagnostics()
+    _sd = st.session_state.get("_sheet_diag")
+    if _sd:
+        if _sd.get("error"):
+            st.error(f"진단 실패: {_sd['error']}")
+        else:
+            _rb = _sd.get("write_readback_ok")
+            if _rb:
+                st.success("쓰기→읽기 반영: 정상 ✅")
+            else:
+                st.error(
+                    "쓰기→읽기 반영: **실패** ❌ — 시트에 쓴 값이 다시 읽을 때 "
+                    "안 나타납니다 (읽기/쓰기 대상 불일치 의심)."
+                )
+            st.write(
+                f"- 스프레드시트: **{_sd.get('spreadsheet_title')}** "
+                f"(`{_sd.get('spreadsheet_id')}`, secret=`{_sd.get('secret_sheet_id')}`)\n"
+                f"- 워크시트: **{_sd.get('worksheet_title')}** · 행수 {_sd.get('row_count')} "
+                f"→ append 후 {_sd.get('row_count_after_append')}\n"
+                f"- 시트가 보는 최신 계약일: **{_sd.get('max_계약일')}** · "
+                f"최신 구독종료일: **{_sd.get('max_구독종료일')}**"
+            )
+            if _sd.get("cleanup_error"):
+                st.caption(f"(마커 정리 경고: {_sd['cleanup_error']})")
+
 # 노션에서 삭제·상태변경된 시트 row 정리 — 2단계(미리보기 → 실제 삭제)
 with st.sidebar.expander("🧹 노션 삭제 row 정리"):
     st.caption(
