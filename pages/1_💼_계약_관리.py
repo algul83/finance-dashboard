@@ -731,6 +731,13 @@ st.markdown(
         display: flex !important;
         align-items: center !important;
     }
+    /* 탭(진행 중/종료) 옵션이 좁을 때 두 줄로 줄바꿈되지 않도록 가로 유지 */
+    div[data-testid="stSegmentedControl"] > div {
+        flex-wrap: nowrap !important;
+    }
+    div[data-testid="stSegmentedControl"] button p {
+        white-space: nowrap !important;
+    }
     /* 전체 펼치기/접기 아이콘 버튼 — 두 버튼 높이를 동일하게 고정.
        (이모지 글리프 세로 메트릭 차이로 auto-height가 달라지던 문제 방지) */
     div.st-key-expand_all_btn button,
@@ -779,7 +786,7 @@ st.markdown(
 if "contract_tab_choice" not in st.session_state:
     st.session_state["contract_tab_choice"] = "active"
 
-_tab_col, _sort_col, _spacer_col, _exp_col, _col_col = st.columns([3.2, 3, 4.6, 0.6, 0.6])
+_tab_col, _sort_col, _spacer_col, _exp_col, _col_col = st.columns([5, 3, 2.4, 0.8, 0.8])
 
 with _tab_col:
     _selected_tab = st.segmented_control(
@@ -797,10 +804,10 @@ with _tab_col:
 # 정렬 옵션: 라벨 → (컬럼, 오름차순 여부)
 _SORT_OPTIONS = {
     "정렬 없음": None,
-    "계약 시작일 ↑ (오름차순)": ("구독시작일", True),
-    "계약 시작일 ↓ (내림차순)": ("구독시작일", False),
-    "계약 종료일 ↑ (오름차순)": ("구독종료일", True),
-    "계약 종료일 ↓ (내림차순)": ("구독종료일", False),
+    "계약 시작일 ↑": ("구독시작일", True),
+    "계약 시작일 ↓": ("구독시작일", False),
+    "계약 종료일 ↑": ("구독종료일", True),
+    "계약 종료일 ↓": ("구독종료일", False),
 }
 with _sort_col:
     _sort_label = st.selectbox(
