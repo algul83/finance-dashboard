@@ -722,16 +722,25 @@ st.markdown(
         display: flex !important;
         align-items: center !important;
     }
-    /* 전체 펼치기/접기 버튼 — 커스텀 height 오버라이드 없이 Streamlit 기본 스타일 사용.
-       버튼 안 모든 요소에 nowrap 강제해 wrap으로 인한 높이 불일치 방지.
-       (라벨에도 NBSP를 써 브라우저가 공백에서 break하지 못하게 이중 방어) */
+    /* 전체 펼치기/접기 아이콘 버튼 — 두 버튼 높이를 동일하게 고정.
+       (이모지 글리프 세로 메트릭 차이로 auto-height가 달라지던 문제 방지) */
     div.st-key-expand_all_btn button,
+    div.st-key-collapse_all_btn button {
+        height: 40px !important;
+        min-height: 40px !important;
+        max-height: 40px !important;
+        padding: 0 !important;
+        line-height: 1 !important;
+        font-size: 1.05rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
     div.st-key-expand_all_btn button *,
-    div.st-key-collapse_all_btn button,
     div.st-key-collapse_all_btn button * {
         white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        line-height: 1 !important;
+        margin: 0 !important;
     }
     </style>
     """,
