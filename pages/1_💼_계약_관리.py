@@ -223,9 +223,9 @@ if st.sidebar.button(
             st.session_state["_sync_msg"] = ("error", f"동기화 실패: {msg}")
         st.rerun()
 
-# Notion 연결 진단 — 앱의 토큰이 각 연도 DB를 실제로 보는지 즉석 점검.
-# '동기화해도 변경 사항 없음'이 반복될 때 앱이 최신 데이터를 못 보는지 확인용.
-with st.sidebar.expander("🔌 Notion 연결 진단"):
+# 진단·정리 통합 메뉴 — Notion 연결 진단 · 시트 쓰기 진단 · 시트 정리 · 노션 삭제 row 정리
+with st.sidebar.expander("🛠️ 진단 · 정리"):
+    st.markdown("**🔌 Notion 연결 진단**")
     st.caption(
         "앱의 Notion 토큰이 각 연도 DB를 조회할 수 있는지, 그리고 앱이 보는 "
         "'최신 추가일'이 언제까지인지 확인합니다. 최신 추가일이 실제 노션보다 "
@@ -249,9 +249,8 @@ with st.sidebar.expander("🔌 Notion 연결 진단"):
         else:
             st.error(f"**{_row['label']}**: 접근 실패 — {_row.get('error', '')}")
 
-# 시트 쓰기/읽기 진단 — 동기화는 '성공'인데 화면·재조회에 반영이 안 될 때,
-# 앱이 실제로 쓰는 시트와 '쓰기→즉시 읽기'가 반영되는지 확인.
-with st.sidebar.expander("🧪 시트 쓰기 진단"):
+    st.divider()
+    st.markdown("**🧪 시트 쓰기 진단**")
     st.caption(
         "동기화가 '추가/갱신 N건'이라는데 화면에 안 나타날 때 사용합니다. "
         "앱이 실제로 어떤 시트를 쓰는지, 방금 쓴 값이 즉시 다시 읽히는지 확인합니다."
@@ -285,8 +284,8 @@ with st.sidebar.expander("🧪 시트 쓰기 진단"):
             if _sd.get("cleanup_error"):
                 st.caption(f"(마커 정리 경고: {_sd['cleanup_error']})")
 
-# 시트 정리(재구성) — 떠도는 값·빈 갭·밀린 중복 행 제거. 2단계(미리보기 → 실행).
-with st.sidebar.expander("🧹 시트 정리(재구성)"):
+    st.divider()
+    st.markdown("**🧹 시트 정리(재구성)**")
     st.caption(
         "반복 동기화로 시트에 쌓인 떠도는 숫자·빈 행·열이 밀린 중복 행을 제거합니다. "
         "**기존 유효 계약·수기 입력은 보존**하며, 깨진 행만 정리합니다. "
@@ -333,8 +332,8 @@ with st.sidebar.expander("🧹 시트 정리(재구성)"):
                     except Exception as e:
                         st.error(f"정리 실패: {e}")
 
-# 노션에서 삭제·상태변경된 시트 row 정리 — 2단계(미리보기 → 실제 삭제)
-with st.sidebar.expander("🧹 노션 삭제 row 정리"):
+    st.divider()
+    st.markdown("**🧹 노션 삭제 row 정리**")
     st.caption(
         "노션에서 페이지를 삭제했거나 상태를 confirmed 외로 바꾼 시트 row를 정리합니다. "
         "수동 입력 row(notion_id 없음)는 건드리지 않습니다."
