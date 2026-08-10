@@ -797,13 +797,15 @@ with _tab_col:
 
 with _exp_col:
     if st.button("", icon=":material/unfold_more:", help="전체 펼치기", use_container_width=True, key="expand_all_btn"):
-        for _cid in customer_contracts["contract_id"]:
-            st.session_state[f"expand_{_cid}"] = True
+        # 카드 key가 contract_id__idx라 개별 키를 직접 세팅하면 안 맞음 →
+        # nonce를 올려서 각 카드가 렌더 시 1회 반영하도록 (인덱스 무관)
+        st.session_state["_bulk_nonce"] = st.session_state.get("_bulk_nonce", 0) + 1
+        st.session_state["_bulk_dir"] = True
         st.rerun()
 with _col_col:
     if st.button("", icon=":material/unfold_less:", help="전체 접기", use_container_width=True, key="collapse_all_btn"):
-        for _cid in customer_contracts["contract_id"]:
-            st.session_state[f"expand_{_cid}"] = False
+        st.session_state["_bulk_nonce"] = st.session_state.get("_bulk_nonce", 0) + 1
+        st.session_state["_bulk_dir"] = False
         st.rerun()
 
 # 사용자가 선택 해제(None)한 경우 진행 중으로 fallback
@@ -835,6 +837,13 @@ def _render_contract_card(c, card_idx: int = 0):
     expand_key = f"expand_{card_uid}"
     if expand_key not in st.session_state:
         st.session_state[expand_key] = False
+    # 전체 펼치기/접기(대량 동작) — nonce가 증가한 경우 이 카드에 1회 반영.
+    # 이후 개별 토글은 그대로 유지(다음 대량 동작 전까지).
+    _bulk_nonce = st.session_state.get("_bulk_nonce", 0)
+    _bulk_applied_key = f"_bulk_applied_{card_uid}"
+    if _bulk_nonce > st.session_state.get(_bulk_applied_key, 0):
+        st.session_state[expand_key] = bool(st.session_state.get("_bulk_dir", False))
+        st.session_state[_bulk_applied_key] = _bulk_nonce
     is_expanded = st.session_state[expand_key]
 
     with st.container(border=True):
