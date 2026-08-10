@@ -149,6 +149,60 @@ def invalidate_cache():
     load_payments.clear()
 
 
+def sheet_diagnostics() -> dict:
+    """계약 시트의 실제 연결 대상과 '쓰기→읽기 반영' 여부를 진단 (캐시 우회).
+
+    동기화는 성공(9건 추가/159건 갱신)이라는데 화면·재조회에 반영이 안 될 때,
+    ① 앱이 실제로 어떤 스프레드시트/워크시트를 쓰는지, ② 방금 쓴 값이 즉시 다시
+    읽히는지(마커 append→read-back), ③ 시트가 실제로 보는 최신 날짜/행수를 확인한다.
+
+    캐시된 load_contracts()가 아니라 워크시트를 직접 조회하므로, 표시(캐시)와
+    실제 시트 내용이 다를 때 그 차이도 드러난다.
+    """
+    from gsheet_client import get_sheet_id, get_worksheet, open_contracts_sheet
+
+    out: dict = {}
+    try:
+        sid = get_sheet_id()
+        out["secret_sheet_id"] = f"{sid[:6]}…{sid[-4:]}" if sid else "(없음)"
+        ss = open_contracts_sheet()
+        out["spreadsheet_title"] = ss.title
+        out["spreadsheet_id"] = f"{ss.id[:6]}…{ss.id[-4:]}"
+        ws = get_worksheet("Contracts")
+        out["worksheet_title"] = ws.title
+
+        recs = ws.get_all_records(expected_headers=CONTRACT_COLUMNS)
+        out["row_count"] = len(recs)
+
+        def _max_date(key: str) -> str:
+            vals = [str(r.get(key, "")).strip() for r in recs if str(r.get(key, "")).strip()]
+            return max(vals) if vals else "(없음)"
+
+        out["max_계약일"] = _max_date("계약일")
+        out["max_구독종료일"] = _max_date("구독종료일")
+
+        # 쓰기→읽기 반영 테스트: 마커 1행 append 후 즉시 재조회로 확인, 성공 시 정리.
+        marker = f"__DIAG_{int(time.time() * 1000)}"
+        row = [marker] + [""] * (len(CONTRACT_COLUMNS) - 1)
+        ws.append_row(row, value_input_option="RAW")
+        recs2 = ws.get_all_records(expected_headers=CONTRACT_COLUMNS)
+        out["row_count_after_append"] = len(recs2)
+        found_idx = next(
+            (i for i, r in enumerate(recs2) if str(r.get("contract_id", "")) == marker),
+            None,
+        )
+        out["write_readback_ok"] = found_idx is not None
+        # 마커 정리 (append로 늘어난 행 제거)
+        if found_idx is not None:
+            try:
+                ws.delete_rows(found_idx + 2)
+            except Exception as e:  # noqa: BLE001
+                out["cleanup_error"] = str(e)[:150]
+    except Exception as e:  # noqa: BLE001 — 진단이므로 원문 노출
+        out["error"] = f"{type(e).__name__}: {e}"[:300]
+    return out
+
+
 def is_overseas(service_name) -> bool:
     """서비스명이 해외 대조약 케이스인지 판정.
     해외대조약은 고객 실입금액이 발행액과 다를 수 있어 (관세·부가세 등)
