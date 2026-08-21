@@ -531,10 +531,17 @@ if not _cdates.empty:
     # 시작일 상한도 같이 오늘까지 허용.
     _range_max = max(_inv_max, _today)
 
-    if "inv_start" not in st.session_state:
-        st.session_state["inv_start"] = _inv_min
-    if "inv_end" not in st.session_state:
-        st.session_state["inv_end"] = _today
+    # 세션에 저장된 날짜가 현재 계약일 범위를 벗어나면 보정한다.
+    # (범위가 바뀌면 date_input이 "default value must lie between min/max" 예외로
+    #  앱 전체를 크래시시키므로, 위젯 생성 전에 항상 범위 안으로 clamp)
+    def _clamp_date(_key, _default):
+        _v = st.session_state.get(_key, _default)
+        if not isinstance(_v, date):
+            _v = _default
+        st.session_state[_key] = max(_inv_min, min(_v, _range_max))
+
+    _clamp_date("inv_start", _inv_min)
+    _clamp_date("inv_end", _today)
 
     _fc = st.columns([1.4, 0.15, 1.4, 2.4, 0.9, 0.85, 0.85])
     with _fc[0]:
