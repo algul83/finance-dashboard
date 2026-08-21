@@ -402,11 +402,15 @@ except Exception as e:
                 st.write("**gcp_service_account 키:**", list(sa.keys()))
                 if "private_key" in sa:
                     pk = sa["private_key"]
+                    # f-string 표현식 안에 백슬래시를 쓰면 Python 3.11 이하에서
+                    # SyntaxError(파일 전체 컴파일 실패)가 나므로 미리 계산해 둔다.
+                    _has_escaped_nl = "\\n" in pk
+                    _has_real_nl = "\n" in pk
                     st.write(
                         f"**private_key 길이**: {len(pk)}자, "
                         f"**시작**: `{pk[:30]}`, "
-                        f"**\\n 포함**: {'\\n' in pk}, "
-                        f"**실제 줄바꿈 포함**: {chr(10) in pk}"
+                        f"**\\n 포함**: {_has_escaped_nl}, "
+                        f"**실제 줄바꿈 포함**: {_has_real_nl}"
                     )
                 if "client_email" in sa:
                     st.write(f"**client_email**: {sa['client_email']}")
