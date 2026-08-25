@@ -34,6 +34,21 @@ streamlit run app.py
 3. Streamlit Cloud의 Settings → Secrets 에 `NOTION_TOKEN` 입력
 4. 발급 URL을 `Onesglobal Internal` 랜딩 페이지 `accounting` 키에 등록
 
+## 앱 잠자기 방지
+
+Streamlit Community Cloud는 일정 기간 접속이 없으면 앱을 잠재운다
+(`Zzzz — This app has gone to sleep due to inactivity` 화면).
+
+`.github/workflows/keep-awake.yml`이 6시간마다 실제 브라우저로 앱에 접속해
+세션을 맺어 잠들지 않게 유지한다. 이미 잠들어 있으면 wake 버튼까지 눌러 깨운다.
+
+- 수동 실행: GitHub → Actions → **Keep Streamlit app awake** → Run workflow
+- 앱 URL 변경 시 workflow의 `APP_URL` 수정
+- 실패하면 스크린샷이 artifact(`keep-awake-screenshot`)로 남는다
+
+> repo에 60일 이상 커밋이 없으면 GitHub이 스케줄 워크플로를 자동 비활성화한다.
+> 그 경우 Actions 탭에서 다시 활성화하면 된다.
+
 ## 데이터 출처
 
 - Notion 영업현황 DB (data_source_id: `2ab3a733-4743-8132-91a6-000bdac816e9`)
